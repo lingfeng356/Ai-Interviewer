@@ -7,12 +7,10 @@ import java.time.LocalDateTime;
 
 @Data
 @NoArgsConstructor
-public class InterviewSession {
-
+public class User {
     private Long id;
-    private String sessionId;
-    private String status;
+    private String username;
+    private String nickname;
+    private String password;
     private LocalDateTime createdTime;
-    private Long resumeId;
-    private Long userId;
 }

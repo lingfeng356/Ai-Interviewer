@@ -4,6 +4,7 @@ import com.lingfeng.interviewer.common.Result;
 import com.lingfeng.interviewer.dto.ResumeUploadVO;
 import com.lingfeng.interviewer.service.ResumeService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -12,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/resume")
+@Validated
 public class ResumeController {
 
     @Autowired

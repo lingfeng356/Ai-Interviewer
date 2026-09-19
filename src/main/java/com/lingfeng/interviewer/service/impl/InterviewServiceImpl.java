@@ -1,12 +1,10 @@
 package com.lingfeng.interviewer.service.impl;
 
+import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.lingfeng.interviewer.common.RedisKeyConstants;
 import com.lingfeng.interviewer.config.RabbitMQConfig;
-import com.lingfeng.interviewer.dto.InterviewReportVO;
-import com.lingfeng.interviewer.dto.ReplyRequest;
-import com.lingfeng.interviewer.dto.ReplyVO;
-import com.lingfeng.interviewer.dto.StartInterviewVO;
+import com.lingfeng.interviewer.dto.*;
 import com.lingfeng.interviewer.entity.InterviewReport;
 import com.lingfeng.interviewer.entity.InterviewSession;
 import com.lingfeng.interviewer.entity.Resume;
@@ -27,6 +25,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static com.lingfeng.interviewer.common.RedisKeyConstants.INTERVIEW_HISTORY;
 
@@ -64,11 +63,14 @@ public class InterviewServiceImpl implements InterviewService {
     public StartInterviewVO start(Long resumeId) {
         String sessionId = UUID.randomUUID().toString();
 
+        Long userId = StpUtil.getLoginIdAsLong();
+
         // 1.存mysql
         InterviewSession session = new InterviewSession();
         session.setSessionId(sessionId);
         session.setResumeId(resumeId);
         session.setStatus("ONGOING");
+        session.setUserId(userId);
         interviewSessionMapper.insert(session);
 
         // 2.调用ai开场白
@@ -81,6 +83,7 @@ public class InterviewServiceImpl implements InterviewService {
         // 3.开场白存redis
         String redisKey = RedisKeyConstants.interviewHistory(sessionId);
         stringRedisTemplate.opsForList().rightPush(redisKey, "assistant:" + opening);
+        stringRedisTemplate.expire(redisKey, 7, TimeUnit.DAYS);   // 7 天后自动清理
 
         // 4.组装VO返回
         StartInterviewVO vo = new StartInterviewVO();
@@ -103,6 +106,11 @@ public class InterviewServiceImpl implements InterviewService {
             throw new RuntimeException("会话不存在");
         }
 
+        Long currentUserId = StpUtil.getLoginIdAsLong();
+        if (!session.getUserId().equals(currentUserId)) {
+            throw new RuntimeException("无权访问该面试");
+        }
+
         Resume resume = resumeMapper.selectById(session.getResumeId());
         String resumeText = resume != null ? resume.getContent() : "";
 
@@ -110,6 +118,7 @@ public class InterviewServiceImpl implements InterviewService {
 
         // 2.用户回答存redis
         stringRedisTemplate.opsForList().rightPush(redisKey, "user:" + answer);
+        stringRedisTemplate.expire(redisKey, 7, TimeUnit.DAYS);   // 7 天后自动清理
 
         // 3.从redis读取完整历史
         Long sizeLong = stringRedisTemplate.opsForList().size(redisKey);
@@ -172,6 +181,11 @@ public class InterviewServiceImpl implements InterviewService {
             throw new RuntimeException("该面试已结束");
         }
 
+        Long currentUserId = StpUtil.getLoginIdAsLong();
+        if (!session.getUserId().equals(currentUserId)) {
+            throw new RuntimeException("无权访问该面试");
+        }
+
         // 2.更新状态为FINISHED
         session.setStatus("FINISHED");
         interviewSessionMapper.updateById(session);
@@ -202,6 +216,11 @@ public class InterviewServiceImpl implements InterviewService {
             throw new RuntimeException("会话不存在");
         }
 
+        Long currentUserId = StpUtil.getLoginIdAsLong();
+        if (!session.getUserId().equals(currentUserId)) {
+            throw new RuntimeException("无权访问该面试");
+        }
+
         //2.获取面试报告
         InterviewReport report = interviewReportMapper.selectOne(
                 new LambdaQueryWrapper<InterviewReport>()
@@ -229,4 +248,40 @@ public class InterviewServiceImpl implements InterviewService {
         vo.setCreatedTime(report.getCreatedTime());
         return vo;
     }
+
+    @Override
+    public List<InterviewSessionVO> list() {
+        //1.获取当前用户id
+        Long userId = StpUtil.getLoginIdAsLong();
+
+        //2.查看当前用户所有面试
+        List<InterviewSession> sessions = interviewSessionMapper.selectList(
+                new LambdaQueryWrapper<InterviewSession>()
+                        .eq(InterviewSession::getUserId, userId)
+                        .orderByDesc(InterviewSession::getCreatedTime)
+        );
+
+        //3.转换成VO
+        List<InterviewSessionVO> result = new ArrayList<>();
+        for (InterviewSession session : sessions) {
+            InterviewSessionVO vo = new InterviewSessionVO();
+            vo.setSessionId(session.getSessionId());
+            vo.setStatus(session.getStatus());
+            vo.setCreatedTime(session.getCreatedTime());
+
+            // 查这场的报告分数
+            InterviewReport report = interviewReportMapper.selectOne(
+                    new LambdaQueryWrapper<InterviewReport>()
+                            .eq(InterviewReport::getSessionId, session.getSessionId())
+            );
+            if (report != null) {
+                vo.setTotalScore(report.getTotalScore());
+            }
+            result.add(vo);
+        }
+
+        return result;
+    }
+
+
 }

@@ -1,9 +1,8 @@
 package com.lingfeng.interviewer.service;
 
-import com.lingfeng.interviewer.dto.InterviewReportVO;
-import com.lingfeng.interviewer.dto.ReplyRequest;
-import com.lingfeng.interviewer.dto.ReplyVO;
-import com.lingfeng.interviewer.dto.StartInterviewVO;
+import com.lingfeng.interviewer.dto.*;
+
+import java.util.List;
 
 public interface InterviewService {
     StartInterviewVO start(Long resumeId);
@@ -13,4 +12,6 @@ public interface InterviewService {
     InterviewReportVO finish(String sessionId);
 
     InterviewReportVO report(String sessionId);
+
+    List<InterviewSessionVO> list();
 }

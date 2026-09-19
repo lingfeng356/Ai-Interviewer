@@ -32,3 +32,10 @@ mybatis:
   type-aliases-package: com.lingfeng.interviewer.entity
   configuration:
     map-underscore-to-camel-case: true
+
+
+sa-token:
+  token-name: satoken
+  timeout: 2592000       # 30 天
+  is-concurrent: true
+  is-log: true
