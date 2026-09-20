@@ -2,7 +2,9 @@ package com.lingfeng.interviewer.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.lingfeng.interviewer.common.LlmProviderEnum;
 import com.lingfeng.interviewer.common.RedisKeyConstants;
+import com.lingfeng.interviewer.config.LlmProviderRegistry;
 import com.lingfeng.interviewer.config.RabbitMQConfig;
 import com.lingfeng.interviewer.dto.*;
 import com.lingfeng.interviewer.entity.InterviewReport;
@@ -21,19 +23,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
-import static com.lingfeng.interviewer.common.RedisKeyConstants.INTERVIEW_HISTORY;
-
 @Service
 public class InterviewServiceImpl implements InterviewService {
 
     @Autowired
-    private ChatClient chatClient;
+    private LlmProviderRegistry llmProviderRegistry;
 
     @Autowired
     private RabbitTemplate rabbitTemplate;
@@ -60,10 +59,13 @@ public class InterviewServiceImpl implements InterviewService {
             """;
 
     @Override
-    public StartInterviewVO start(Long resumeId) {
+    public StartInterviewVO start(Long resumeId, String provider) {
         String sessionId = UUID.randomUUID().toString();
 
         Long userId = StpUtil.getLoginIdAsLong();
+
+        // 默认 deepseek
+        String actualProvider = (provider != null && !provider.isEmpty()) ? provider : "deepseek";
 
         // 1.存mysql
         InterviewSession session = new InterviewSession();
@@ -71,7 +73,13 @@ public class InterviewServiceImpl implements InterviewService {
         session.setResumeId(resumeId);
         session.setStatus("ONGOING");
         session.setUserId(userId);
+        session.setProvider(actualProvider);
         interviewSessionMapper.insert(session);
+
+        // 用 actualProvider 选模型
+        LlmProviderEnum providerEnum = LlmProviderEnum.fromString(provider);
+        ChatClient chatClient = llmProviderRegistry.getClient(providerEnum);
+
 
         // 2.调用ai开场白
         String opening = chatClient.prompt()
@@ -111,6 +119,8 @@ public class InterviewServiceImpl implements InterviewService {
             throw new RuntimeException("无权访问该面试");
         }
 
+        String provider = session.getProvider();
+
         Resume resume = resumeMapper.selectById(session.getResumeId());
         String resumeText = resume != null ? resume.getContent() : "";
 
@@ -149,6 +159,10 @@ public class InterviewServiceImpl implements InterviewService {
                 }
             }
         }
+
+        // 用 actualProvider 选模型
+        LlmProviderEnum providerEnum = LlmProviderEnum.fromString(provider);
+        ChatClient chatClient = llmProviderRegistry.getClient(providerEnum);
 
         // 5.调用ai
         String aiReply = chatClient.prompt()

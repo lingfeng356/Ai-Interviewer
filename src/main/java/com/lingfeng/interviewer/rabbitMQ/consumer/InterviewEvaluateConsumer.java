@@ -1,6 +1,7 @@
 package com.lingfeng.interviewer.rabbitMQ.consumer;
 
 import com.lingfeng.interviewer.common.RedisKeyConstants;
+import com.lingfeng.interviewer.config.LlmProviderRegistry;
 import com.lingfeng.interviewer.config.RabbitMQConfig;
 import com.lingfeng.interviewer.dto.InterviewReportVO;
 import com.lingfeng.interviewer.entity.InterviewReport;
@@ -19,7 +20,7 @@ import java.util.List;
 public class InterviewEvaluateConsumer {
 
     @Autowired
-    private ChatClient chatClient;
+    private LlmProviderRegistry llmProviderRegistry;
 
     @Autowired
     private InterviewReportMapper interviewReportMapper;
@@ -57,6 +58,8 @@ public class InterviewEvaluateConsumer {
                 totalScore（0-100 的整数）、summary（总体评价）、
                 strengths（优点）、weaknesses（不足）、suggestion（改进建议）。
                 """;
+
+        ChatClient chatClient = llmProviderRegistry.getDefault();
 
         InterviewReportVO report = chatClient.prompt()
                 .system(evaluatePrompt)

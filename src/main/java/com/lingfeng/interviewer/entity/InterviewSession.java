@@ -15,4 +15,5 @@ public class InterviewSession {
     private LocalDateTime createdTime;
     private Long resumeId;
     private Long userId;
+    private String provider;
 }

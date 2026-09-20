@@ -7,13 +7,6 @@ spring:
 
   application:
     name: ai-interviewer
-  ai:
-    deepseek:
-      api-key: ??
-      chat:
-        options:
-          model: deepseek-chat
-          temperature: 0.7
 
   datasource:
     url: url
@@ -39,3 +32,14 @@ sa-token:
   timeout: 2592000       # 30 天
   is-concurrent: true
   is-log: true
+
+llm:
+  default-provider: deepseek        # 默认用哪个模型
+  providers:                        # 所有模型都放这里
+    deepseek:
+      api-key: api-key
+      base-url: https://api.deepseek.com
+      model: deepseek-chat
+    ollama:
+      base-url: http://localhost:11434
+      model: qwen3:4b

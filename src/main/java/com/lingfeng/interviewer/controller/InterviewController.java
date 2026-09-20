@@ -23,15 +23,17 @@ public class InterviewController {
     * 开启一场新面试
     * */
     @PostMapping("/start")
-    public Result<StartInterviewVO> start(@NotNull(message = "resumeId不能为空") @RequestParam Long resumeId){
-        return Result.success(interviewService.start(resumeId));
+    public Result<StartInterviewVO> start(@NotNull(message = "resumeId不能为空") @RequestParam Long resumeId,
+                                          @RequestParam(required = false) String provider){
+        return Result.success(interviewService.start(resumeId,provider));
     }
 
     /*
     * 候选人回答，ai继续提问
     * */
     @PostMapping("/reply")
-    public Result<ReplyVO> reply(@Validated @RequestBody ReplyRequest request){
+    public Result<ReplyVO> reply(@Validated @RequestBody ReplyRequest request,
+                                 @RequestParam(required = false) String provider){
         return Result.success(interviewService.reply(request));
     }
 
