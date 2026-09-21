@@ -1,6 +1,7 @@
 package com.lingfeng.interviewer.rabbitMQ.consumer;
 
 import com.lingfeng.interviewer.common.RedisKeyConstants;
+import com.lingfeng.interviewer.common.StructuredOutputInvoker;
 import com.lingfeng.interviewer.config.LlmProviderRegistry;
 import com.lingfeng.interviewer.config.RabbitMQConfig;
 import com.lingfeng.interviewer.dto.InterviewReportVO;
@@ -17,7 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Component
-public class InterviewEvaluateConsumer {
+public class InterviewEvaluateConsumer extends AbstractStreamConsumer<String>{
 
     @Autowired
     private LlmProviderRegistry llmProviderRegistry;
@@ -29,7 +30,12 @@ public class InterviewEvaluateConsumer {
     private StringRedisTemplate stringRedisTemplate;
 
     @RabbitListener(queues = RabbitMQConfig.EVALUATE_QUEUE)
-    public void evaluate(String sessionId){
+    public void onMessage(String sessionId) {
+        handle(sessionId);
+    }
+
+    @Override
+    protected void handle(String sessionId){
         //1.读redis消息历史
         String redisKey = RedisKeyConstants.interviewHistory(sessionId);
         Long sizeLong = stringRedisTemplate.opsForList().size(redisKey);
@@ -61,12 +67,13 @@ public class InterviewEvaluateConsumer {
 
         ChatClient chatClient = llmProviderRegistry.getDefault();
 
-        InterviewReportVO report = chatClient.prompt()
-                .system(evaluatePrompt)
-                .user("对话记录：\n" + historyText)
-                .call()
-                .entity(InterviewReportVO.class);
-
+        StructuredOutputInvoker invoker = new StructuredOutputInvoker();
+        InterviewReportVO report = invoker.invoke(
+                chatClient,
+                evaluatePrompt,
+                "对话记录\n" + historyText,
+                InterviewReportVO.class
+        );
         //3.存mysql
         InterviewReport entity = new InterviewReport();
         entity.setSessionId(sessionId);

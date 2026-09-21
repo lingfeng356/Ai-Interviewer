@@ -1,5 +1,6 @@
 package com.lingfeng.interviewer.controller;
 
+import com.lingfeng.interviewer.common.RateLimit;
 import com.lingfeng.interviewer.common.Result;
 import com.lingfeng.interviewer.dto.*;
 import com.lingfeng.interviewer.mapper.InterviewSessionMapper;
@@ -31,6 +32,7 @@ public class InterviewController {
     /*
     * 候选人回答，ai继续提问
     * */
+    @RateLimit(key = "interview_reply", window = 60, limit = 10)  // 1分钟最多10轮
     @PostMapping("/reply")
     public Result<ReplyVO> reply(@Validated @RequestBody ReplyRequest request,
                                  @RequestParam(required = false) String provider){

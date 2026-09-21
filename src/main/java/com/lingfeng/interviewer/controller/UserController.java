@@ -1,5 +1,6 @@
 package com.lingfeng.interviewer.controller;
 
+import com.lingfeng.interviewer.common.RateLimit;
 import com.lingfeng.interviewer.common.Result;
 import com.lingfeng.interviewer.dto.LoginRequest;
 import com.lingfeng.interviewer.dto.RegisterRequest;
@@ -28,6 +29,7 @@ public class UserController {
     /*
     * 登录
     * */
+    @RateLimit(key = "login", window = 60, limit = 5)   // 1分钟最多5次
     @PostMapping("/login")
     public Result<String> login(@Validated @RequestBody LoginRequest request){
         return Result.success(userService.login(request));
