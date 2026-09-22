@@ -13,6 +13,7 @@ public class SaTokenConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new SaInterceptor(handle -> StpUtil.checkLogin()))
                 .addPathPatterns("/interview/**", "/resume/**")
-                .excludePathPatterns("/user/**");
+                .excludePathPatterns("/user/**","/interview/sse");
+
     }
 }

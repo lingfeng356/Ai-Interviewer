@@ -7,6 +7,7 @@ import com.lingfeng.interviewer.config.RabbitMQConfig;
 import com.lingfeng.interviewer.dto.InterviewReportVO;
 import com.lingfeng.interviewer.entity.InterviewReport;
 import com.lingfeng.interviewer.mapper.InterviewReportMapper;
+import com.lingfeng.interviewer.sse.SseManager;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +23,9 @@ public class InterviewEvaluateConsumer extends AbstractStreamConsumer<String>{
 
     @Autowired
     private LlmProviderRegistry llmProviderRegistry;
+
+    @Autowired
+    private SseManager sseManager;
 
     @Autowired
     private InterviewReportMapper interviewReportMapper;
@@ -84,5 +88,7 @@ public class InterviewEvaluateConsumer extends AbstractStreamConsumer<String>{
         entity.setSuggestion(report.getSuggestion());
         entity.setCreatedTime(LocalDateTime.now());
         interviewReportMapper.insert(entity);
+
+        sseManager.send(sessionId,"DONE");
     }
 }

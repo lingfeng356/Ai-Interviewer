@@ -212,7 +212,7 @@ public class InterviewServiceImpl implements InterviewService {
         //3.发送消息到rabbitMQ中，异步评分
         interviewEvaluateProducer.send(sessionId);
 
-        //4.立刻返回生成中三个字
+        //4.立刻返回生成中
         InterviewReportVO vo = new InterviewReportVO();
         vo.setSessionId(sessionId);
         vo.setSummary("报告生成中，请稍后查询");

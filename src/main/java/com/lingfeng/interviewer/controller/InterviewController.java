@@ -5,17 +5,25 @@ import com.lingfeng.interviewer.common.Result;
 import com.lingfeng.interviewer.dto.*;
 import com.lingfeng.interviewer.mapper.InterviewSessionMapper;
 import com.lingfeng.interviewer.service.InterviewService;
+import com.lingfeng.interviewer.sse.SseManager;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.awt.*;
 import java.util.List;
 
 @Validated
 @RestController
 @RequestMapping("/interview")
 public class InterviewController {
+
+    @Autowired
+    private SseManager sseManager;
 
     @Autowired
     private InterviewService interviewService;
@@ -59,5 +67,11 @@ public class InterviewController {
     @GetMapping("/list")
     public Result<List<InterviewSessionVO>> list(){
         return Result.success(interviewService.list());
+    }
+
+    //Sse
+    @GetMapping(value = "/sse",produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter sse(@RequestParam String sessionId){
+        return sseManager.create(sessionId);
     }
 }
