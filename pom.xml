@@ -56,6 +56,12 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- pgvector 向量存储 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
+        </dependency>
+
         <!--AOP-->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -8,6 +8,13 @@ spring:
   application:
     name: ai-interviewer
 
+  ai:
+    ollama:
+      base-url: http://localhost:11434
+      embedding:
+        options:
+          model: shaw/dmeta-embedding-zh
+
   datasource:
     url: url
     username: username
