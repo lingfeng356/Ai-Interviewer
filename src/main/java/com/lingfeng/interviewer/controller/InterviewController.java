@@ -33,8 +33,9 @@ public class InterviewController {
     * */
     @PostMapping("/start")
     public Result<StartInterviewVO> start(@NotNull(message = "resumeId不能为空") @RequestParam Long resumeId,
-                                          @RequestParam(required = false) String provider){
-        return Result.success(interviewService.start(resumeId,provider));
+                                          @RequestParam(required = false) String provider,
+                                          @RequestParam(required = false) String requestId){
+        return Result.success(interviewService.start(resumeId,provider,requestId));
     }
 
     /*

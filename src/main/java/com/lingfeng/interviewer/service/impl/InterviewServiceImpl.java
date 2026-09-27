@@ -2,6 +2,8 @@ package com.lingfeng.interviewer.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.conditions.update.LambdaUpdateChainWrapper;
 import com.lingfeng.interviewer.common.LlmProviderEnum;
 import com.lingfeng.interviewer.common.RedisKeyConstants;
 import com.lingfeng.interviewer.config.LlmProviderRegistry;
@@ -15,6 +17,8 @@ import com.lingfeng.interviewer.mapper.ResumeMapper;
 import com.lingfeng.interviewer.rabbitMQ.producer.InterviewEvaluateProducer;
 import com.lingfeng.interviewer.service.InterviewService;
 import com.lingfeng.interviewer.service.RagService;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -34,6 +38,9 @@ public class InterviewServiceImpl implements InterviewService {
 
     @Autowired
     private LlmProviderRegistry llmProviderRegistry;
+
+    @Autowired
+    private RedissonClient redissonClient;
 
     @Autowired
     private InterviewEvaluateProducer interviewEvaluateProducer;
@@ -67,45 +74,43 @@ public class InterviewServiceImpl implements InterviewService {
             """;
 
     @Override
-    public StartInterviewVO start(Long resumeId, String provider) {
-        String sessionId = UUID.randomUUID().toString();
+    public StartInterviewVO start(Long resumeId, String provider,String requestId) {
+        //没有requestId，直接走原有逻辑
+        if(requestId == null || requestId.isEmpty()){
+            return doStart(resumeId,provider);
+        }
 
-        Long userId = StpUtil.getLoginIdAsLong();
+        //加锁
+        RLock lock = redissonClient.getLock(RedisKeyConstants.interviewStart(requestId));
 
-        // 默认 deepseek
-        String actualProvider = (provider != null && !provider.isEmpty()) ? provider : "deepseek";
+        try {
+            lock.lock(10,TimeUnit.SECONDS);
 
-        // 1.存mysql
-        InterviewSession session = new InterviewSession();
-        session.setSessionId(sessionId);
-        session.setResumeId(resumeId);
-        session.setStatus("ONGOING");
-        session.setUserId(userId);
-        session.setProvider(actualProvider);
-        interviewSessionMapper.insert(session);
+            //先查这个requestId是否被创建过
+            String redisKey = RedisKeyConstants.interviewRequest(requestId);
+            String existSessionId = stringRedisTemplate.opsForValue().get(redisKey);
+            if(existSessionId != null){
+                //已经创建过，直接返回
+                StartInterviewVO vo = new StartInterviewVO();
+                vo.setSessionId(existSessionId);
+                vo.setMessage("面试已创建，请继续");
+                return vo;
+            }
 
-        // 用 actualProvider 选模型
-        LlmProviderEnum providerEnum = LlmProviderEnum.fromString(provider);
-        ChatClient chatClient = llmProviderRegistry.getClient(providerEnum);
+            //没创建过,走正常逻辑
+            StartInterviewVO vo = doStart(resumeId,provider);
 
+            //记录requestId -> sessionId,一小时后过期
+            stringRedisTemplate.opsForValue().set(
+                    redisKey,vo.getSessionId(),1,TimeUnit.HOURS
+            );
 
-        // 2.调用ai开场白
-        String opening = chatClient.prompt()
-                .system(SYSTEM_PROMPT)
-                .user("请开始面试，先让候选人做自我介绍")
-                .call()
-                .content();
-
-        // 3.开场白存redis
-        String redisKey = RedisKeyConstants.interviewHistory(sessionId);
-        stringRedisTemplate.opsForList().rightPush(redisKey, "assistant:" + opening);
-        stringRedisTemplate.expire(redisKey, 7, TimeUnit.DAYS);   // 7 天后自动清理
-
-        // 4.组装VO返回
-        StartInterviewVO vo = new StartInterviewVO();
-        vo.setSessionId(sessionId);
-        vo.setMessage(opening);
-        return vo;
+            return vo;
+        }finally {
+            if(lock.isHeldByCurrentThread()){
+                lock.unlock();
+            }
+        }
     }
 
     @Override
@@ -231,8 +236,15 @@ public class InterviewServiceImpl implements InterviewService {
         }
 
         // 2.更新状态为FINISHED
-        session.setStatus("FINISHED");
-        interviewSessionMapper.updateById(session);
+        int updated = interviewSessionMapper.update(null,
+                new LambdaUpdateWrapper<InterviewSession>()
+                        .eq(InterviewSession::getSessionId,sessionId)
+                        .eq(InterviewSession::getStatus,"ONGOING")
+                        .set(InterviewSession::getStatus,"FINISHED")
+        );
+        if (updated == 0) {
+            throw new RuntimeException("该面试已结束");
+        }
 
         //3.发送消息到rabbitMQ中，异步评分
         interviewEvaluateProducer.send(sessionId);
@@ -324,4 +336,47 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
 
+    /*
+    * 抽取start原有逻辑
+    * */
+    private StartInterviewVO doStart(Long resumeId,String provider){
+        String sessionId = UUID.randomUUID().toString();
+
+        Long userId = StpUtil.getLoginIdAsLong();
+
+        // 默认 deepseek
+        String actualProvider = (provider != null && !provider.isEmpty()) ? provider : "deepseek";
+
+        // 1.存mysql
+        InterviewSession session = new InterviewSession();
+        session.setSessionId(sessionId);
+        session.setResumeId(resumeId);
+        session.setStatus("ONGOING");
+        session.setUserId(userId);
+        session.setProvider(actualProvider);
+        interviewSessionMapper.insert(session);
+
+        // 用 actualProvider 选模型
+        LlmProviderEnum providerEnum = LlmProviderEnum.fromString(provider);
+        ChatClient chatClient = llmProviderRegistry.getClient(providerEnum);
+
+
+        // 2.调用ai开场白
+        String opening = chatClient.prompt()
+                .system(SYSTEM_PROMPT)
+                .user("请开始面试，先让候选人做自我介绍")
+                .call()
+                .content();
+
+        // 3.开场白存redis
+        String redisKey = RedisKeyConstants.interviewHistory(sessionId);
+        stringRedisTemplate.opsForList().rightPush(redisKey, "assistant:" + opening);
+        stringRedisTemplate.expire(redisKey, 7, TimeUnit.DAYS);   // 7 天后自动清理
+
+        // 4.组装VO返回
+        StartInterviewVO vo = new StartInterviewVO();
+        vo.setSessionId(sessionId);
+        vo.setMessage(opening);
+        return vo;
+    }
 }
