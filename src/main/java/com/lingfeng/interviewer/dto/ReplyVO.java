@@ -8,4 +8,5 @@ import lombok.NoArgsConstructor;
 public class ReplyVO {
     private String sessionId;
     private String message;
+    private String aiAudio;   // base64 编码的音频
 }

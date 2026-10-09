@@ -17,6 +17,7 @@ import com.lingfeng.interviewer.mapper.ResumeMapper;
 import com.lingfeng.interviewer.rabbitMQ.producer.InterviewEvaluateProducer;
 import com.lingfeng.interviewer.service.InterviewService;
 import com.lingfeng.interviewer.service.RagService;
+import com.lingfeng.interviewer.service.VoiceService;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.ai.chat.messages.Message;
@@ -29,6 +30,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -38,6 +40,9 @@ public class InterviewServiceImpl implements InterviewService {
 
     @Autowired
     private LlmProviderRegistry llmProviderRegistry;
+
+    @Autowired
+    private VoiceService voiceService;
 
     @Autowired
     private RedissonClient redissonClient;
@@ -161,6 +166,10 @@ public class InterviewServiceImpl implements InterviewService {
         // 5. 转成 Spring AI 的 Message 列表
         List<Message> messages = new ArrayList<>();
 
+        System.out.println(">>> resumeId = " + session.getResumeId());
+        System.out.println(">>> resume = " + resume);
+        System.out.println(">>> resumeText.length = " + (resumeText != null ? resumeText.length() : "null"));
+
         // 简历
         if (resumeText != null && !resumeText.isEmpty()) {
             messages.add(new UserMessage(
@@ -209,10 +218,15 @@ public class InterviewServiceImpl implements InterviewService {
         // 8. AI 回复存 redis
         stringRedisTemplate.opsForList().rightPush(redisKey, "assistant:" + aiReply);
 
+        //AI回复转语音
+        byte[] audioBytes = voiceService.textToSpeech(aiReply);
+        String aiAudioBase64 = Base64.getEncoder().encodeToString(audioBytes);
+
         // 9. 组装 VO
         ReplyVO vo = new ReplyVO();
         vo.setSessionId(sessionId);
         vo.setMessage(aiReply);
+        vo.setAiAudio(aiAudioBase64);
         return vo;
     }
 

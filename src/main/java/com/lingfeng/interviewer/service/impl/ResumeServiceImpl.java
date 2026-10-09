@@ -23,6 +23,8 @@ public class ResumeServiceImpl implements ResumeService {
     @Autowired
     private ResumeMapper resumeMapper;
 
+
+    //TODO:添加OCR图片识别pdf
     //加载简历
     @Override
     public ResumeUploadVO upload(MultipartFile file) {

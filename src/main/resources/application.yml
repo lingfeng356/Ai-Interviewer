@@ -15,6 +15,9 @@ spring:
         options:
           model: shaw/dmeta-embedding-zh
 
+    dashscope:
+      api-key: sk-ws-H.PLPXYPY.gRxU.MEUCIF2Jln5bU066iL_yDxL7UJyPxuu9haNU-NcuPDomuZ3TAiEAqIfYvEJeKwoi5VhJQd7ghl_eazUwiN5OhXElfSf3-l8
+
   datasource:
     url: url
     username: username
