@@ -119,7 +119,7 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     @Override
-    public ReplyVO reply(ReplyRequest request) {
+    public ReplyVO reply(ReplyRequest request, String overrideProvider) {
         String sessionId = request.getSessionId();
         String answer = request.getAnswer();
 
@@ -137,7 +137,10 @@ public class InterviewServiceImpl implements InterviewService {
             throw new RuntimeException("无权访问该面试");
         }
 
-        String provider = session.getProvider();
+        // 模型优先级：请求级覆盖(L2) > 会话配置(L1)
+        String provider = (overrideProvider != null && !overrideProvider.isEmpty())
+                ? overrideProvider
+                : session.getProvider();
 
         Resume resume = resumeMapper.selectById(session.getResumeId());
         String resumeText = resume != null ? resume.getContent() : "";
@@ -228,6 +231,47 @@ public class InterviewServiceImpl implements InterviewService {
         vo.setMessage(aiReply);
         vo.setAiAudio(aiAudioBase64);
         return vo;
+    }
+
+    /**
+     * L1：会话级热切换模型
+     * 只更新会话的 provider 字段，reply() 每次都会重新读库，所以下一回合即生效
+     */
+    @Override
+    public void switchProvider(String sessionId, String provider) {
+        // 1. 会话必须存在
+        InterviewSession session = interviewSessionMapper.selectOne(
+                new LambdaQueryWrapper<InterviewSession>()
+                        .eq(InterviewSession::getSessionId, sessionId)
+        );
+        if (session == null) {
+            throw new RuntimeException("会话不存在");
+        }
+
+        // 2. 归属校验：不校验就能改别人的面试
+        Long currentUserId = StpUtil.getLoginIdAsLong();
+        if (!session.getUserId().equals(currentUserId)) {
+            throw new RuntimeException("无权访问该面试");
+        }
+
+        // 3. 已结束的面试不允许再换模型
+        if (!"ONGOING".equals(session.getStatus())) {
+            throw new RuntimeException("只有进行中的面试可以切换模型");
+        }
+
+        // 4. 提前校验合法性，并统一成小写存储（避免库里出现 DeepSeek/deepseek 两种写法）
+        String normalized = LlmProviderEnum.fromString(provider).name().toLowerCase();
+
+        // 5. 与当前模型相同则无需更新
+        if (normalized.equals(session.getProvider())) {
+            return;
+        }
+
+        interviewSessionMapper.update(null,
+                new LambdaUpdateWrapper<InterviewSession>()
+                        .eq(InterviewSession::getSessionId, sessionId)
+                        .set(InterviewSession::getProvider, normalized)
+        );
     }
 
     @Override
@@ -349,7 +393,6 @@ public class InterviewServiceImpl implements InterviewService {
         return result;
     }
 
-
     /*
     * 抽取start原有逻辑
     * */
@@ -370,8 +413,8 @@ public class InterviewServiceImpl implements InterviewService {
         session.setProvider(actualProvider);
         interviewSessionMapper.insert(session);
 
-        // 用 actualProvider 选模型
-        LlmProviderEnum providerEnum = LlmProviderEnum.fromString(provider);
+        // 用 actualProvider 选模型（入参 provider 可能为 null，actualProvider 才有兜底值）
+        LlmProviderEnum providerEnum = LlmProviderEnum.fromString(actualProvider);
         ChatClient chatClient = llmProviderRegistry.getClient(providerEnum);
 
 

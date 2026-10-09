@@ -45,7 +45,18 @@ public class InterviewController {
     @PostMapping("/reply")
     public Result<ReplyVO> reply(@Validated @RequestBody ReplyRequest request,
                                  @RequestParam(required = false) String provider){
-        return Result.success(interviewService.reply(request));
+        // provider 可选：仅本回合临时指定模型(L2)；不传则用会话当前模型(L1)
+        return Result.success(interviewService.reply(request, provider));
+    }
+
+    /*
+    * 运行时热切换模型（会话级 L1）：切换后后续所有回合都用新模型
+    * */
+    @PostMapping("/provider")
+    public Result<Void> switchProvider(@RequestParam String sessionId,
+                                       @RequestParam String provider){
+        interviewService.switchProvider(sessionId, provider);
+        return Result.success(null);
     }
 
     /*
