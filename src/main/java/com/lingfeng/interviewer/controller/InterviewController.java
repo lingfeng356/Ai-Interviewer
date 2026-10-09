@@ -50,6 +50,17 @@ public class InterviewController {
     }
 
     /*
+    * 流式回答：AI 边生成边推送 delta 事件，结束后推 audio + done
+    * 返回的是 SseEmitter，不能再包 Result，否则前端拿到的是普通 JSON 而不是流
+    * 限流和同步版共用同一个 key，避免绕过限制
+    * */
+    @RateLimit(key = "interview_reply", window = 60, limit = 10)
+    @PostMapping(value = "/reply/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter replyStream(@Validated @RequestBody ReplyRequest request){
+        return interviewService.replyStream(request);
+    }
+
+    /*
     * 运行时热切换模型（会话级 L1）：切换后后续所有回合都用新模型
     * */
     @PostMapping("/provider")
@@ -81,9 +92,10 @@ public class InterviewController {
         return Result.success(interviewService.list());
     }
 
-    //Sse
+    //Sse：报告生成进度
+    // 第二个参数让 SseManager 在连接建立时补发一次 Redis 里缓存的进度（刷新页面不丢进度）
     @GetMapping(value = "/sse",produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter sse(@RequestParam String sessionId){
-        return sseManager.create(sessionId);
+        return sseManager.create(sessionId, sessionId);
     }
 }
