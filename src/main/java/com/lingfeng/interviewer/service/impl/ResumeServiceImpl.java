@@ -1,5 +1,6 @@
 package com.lingfeng.interviewer.service.impl;
 
+import com.lingfeng.interviewer.common.BusinessException;
 import com.lingfeng.interviewer.dto.ResumeUploadVO;
 import com.lingfeng.interviewer.entity.Resume;
 import com.lingfeng.interviewer.mapper.ResumeMapper;
@@ -30,12 +31,12 @@ public class ResumeServiceImpl implements ResumeService {
     public ResumeUploadVO upload(MultipartFile file) {
         //1.校验文件
         if(file == null || file.isEmpty()){
-            throw new RuntimeException("上传文件不能为空");
+            throw new BusinessException("上传文件不能为空");
         }
 
         String originalFileName = file.getOriginalFilename();
         if(originalFileName == null || !originalFileName.toLowerCase().endsWith(".pdf")){
-            throw new RuntimeException("只支持PDF格式的简历");
+            throw new BusinessException("只支持PDF格式的简历");
         }
 
         //2.生成存储路径：uploads/2026/09/17/xxx.pdf
@@ -54,7 +55,7 @@ public class ResumeServiceImpl implements ResumeService {
         try{
             file.transferTo(new File(filePath).getAbsoluteFile());
         }catch (IOException e){
-            throw new RuntimeException("文件保存失败:" + e.getMessage());
+            throw new BusinessException("文件保存失败:" + e.getMessage());
         }
 
         String content;
@@ -64,7 +65,7 @@ public class ResumeServiceImpl implements ResumeService {
             Tika tika = new Tika();
             content = tika.parseToString(new File(filePath).getAbsoluteFile());
         }catch (Exception e){
-            throw new RuntimeException("PDF解析失败:" + e.getMessage());
+            throw new BusinessException("PDF解析失败:" + e.getMessage());
         }
 
         //5.存mysql

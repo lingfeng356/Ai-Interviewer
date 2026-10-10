@@ -6,6 +6,7 @@ import com.alibaba.dashscope.audio.tts.SpeechSynthesizer;
 import com.alibaba.dashscope.audio.tts.SpeechSynthesisParam;
 import com.alibaba.dashscope.audio.tts.SpeechSynthesisResult;
 import com.alibaba.dashscope.utils.Constants;
+import com.lingfeng.interviewer.common.BusinessException;
 import com.lingfeng.interviewer.service.VoiceService;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,7 +52,7 @@ public class VoiceServiceImpl implements VoiceService {
             tempFile.delete();
             return result;
         } catch (Exception e) {
-            throw new RuntimeException("语音识别失败: " + e.getMessage());
+            throw new BusinessException("语音识别失败: " + e.getMessage());
         }
     }
 

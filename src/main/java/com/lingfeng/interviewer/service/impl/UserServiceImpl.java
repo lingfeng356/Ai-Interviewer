@@ -2,6 +2,7 @@ package com.lingfeng.interviewer.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.lingfeng.interviewer.common.BusinessException;
 import com.lingfeng.interviewer.dto.LoginRequest;
 import com.lingfeng.interviewer.dto.RegisterRequest;
 import com.lingfeng.interviewer.entity.User;
@@ -27,7 +28,7 @@ public class UserServiceImpl implements UserService {
                         .eq(User::getUsername, request.getUsername())
         );
         if(exist != null){
-            throw new RuntimeException("用户名已存在");
+            throw new BusinessException("用户名已存在");
         }
 
         //2.插入新用户
@@ -46,7 +47,7 @@ public class UserServiceImpl implements UserService {
                         .eq(User::getUsername, request.getUsername())
         );
         if (user == null || !encoder.matches(request.getPassword(), user.getPassword())) {
-            throw new RuntimeException("用户名或密码错误");
+            throw new BusinessException("用户名或密码错误");
         }
 
         //2.sa-token登录，返回token

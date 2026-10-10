@@ -60,6 +60,16 @@ public enum InterviewStage {
         return instruction;
     }
 
+    /** 该环节从第几轮开始（包含）。拼 prompt 时要用它算出"本环节第几题" */
+    public int getFromRound() {
+        return fromRound;
+    }
+
+    /** 该环节到第几轮结束（不包含）。拼 prompt 时要用它算出"本环节共几题" */
+    public int getToRound() {
+        return toRound;
+    }
+
     /**
      * 根据「候选人已经回答了几轮」算出当前所处的阶段。
      *

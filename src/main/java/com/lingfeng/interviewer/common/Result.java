@@ -17,8 +17,13 @@ public class Result<T> {
     }
 
     public static <T> Result<T> error(String message) {
+        return error(500, message);
+    }
+
+    /** 带错误码的失败返回：业务异常、未登录、限流等都走这个 */
+    public static <T> Result<T> error(int code, String message) {
         Result<T> r = new Result<>();
-        r.setCode(500);
+        r.setCode(code);
         r.setMessage(message);
         return r;
     }

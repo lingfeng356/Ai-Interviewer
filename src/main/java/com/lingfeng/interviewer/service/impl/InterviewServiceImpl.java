@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.conditions.update.LambdaUpdateChainWrapper;
+import com.lingfeng.interviewer.common.BusinessException;
 import com.lingfeng.interviewer.common.InterviewStage;
 import com.lingfeng.interviewer.common.LlmProviderEnum;
 import com.lingfeng.interviewer.common.RedisKeyConstants;
@@ -80,11 +81,48 @@ public class InterviewServiceImpl implements InterviewService {
             """;
 
     /**
-     * 结构化面试：把通用规则和「当前环节」的要求拼成完整的 system prompt。
-     * 当前处于哪个环节，由 InterviewStage 根据候选人已回答的轮数算出来。
+     * 结构化面试的核心：把「通用规则 + 当前进度 + 本环节任务 + 硬性约束」拼成 system prompt。
+     *
+     * 为什么写得这么啰嗦：只丢一句"现在是项目环节"，AI 经常不买账 ——
+     * 它会顺着对话历史里自己上一句话接着问，而不是切到新环节。
+     * 所以这里明确告诉它：这是第几轮提问、这是本环节第几题、不许问别的环节，
+     * 环节刚切换时还要额外提醒一句"自然过渡"。
+     *
+     * @param stage          当前环节
+     * @param answeredRounds 候选人已经回答了几轮（开场白不算）
      */
-    private static String buildSystemPrompt(InterviewStage stage) {
-        return BASE_PROMPT + "\n当前环节要求：\n" + stage.getInstruction();
+    private static String buildSystemPrompt(InterviewStage stage, int answeredRounds) {
+        // 本环节这是第几题（从 1 开始）
+        int roundInStage = answeredRounds - stage.getFromRound() + 1;
+        // 本环节一共大约几题
+        int stageRounds = stage.getToRound() - stage.getFromRound();
+
+        StringBuilder sb = new StringBuilder(BASE_PROMPT);
+
+        // ---------- 1. 当前进度：让模型知道"现在演到哪了" ----------
+        sb.append("\n\n【当前面试进度】")
+                .append("\n- 整场面试：这是你的第 ").append(answeredRounds + 1).append(" 次提问")
+                .append("\n- 当前环节：【").append(stage.getLabel()).append("】")
+                .append("\n- 该环节进度：第 ").append(roundInStage)
+                .append(" 题 / 共约 ").append(stageRounds).append(" 题");
+
+        // 环节刚切换（本环节第 1 题）时额外提醒，防止 AI 还揪着上一个环节的话题不放
+        if (roundInStage == 1 && answeredRounds > 0) {
+            sb.append("\n- 注意：你刚刚从上一个环节切换到【").append(stage.getLabel())
+                    .append("】，请自然地开启新话题，不要再追问上一个环节的内容");
+        }
+
+        // ---------- 2. 本环节的任务 ----------
+        sb.append("\n\n【本环节的任务】\n").append(stage.getInstruction());
+
+        // ---------- 3. 硬性约束：放最后，模型对末尾的指令更敏感 ----------
+        sb.append("\n\n【硬性约束】")
+                .append("\n1. 你这一次的提问必须属于【").append(stage.getLabel())
+                .append("】环节，禁止问其他环节的问题")
+                .append("\n2. 不要重复候选人已经回答过的问题")
+                .append("\n3. 只输出你要对候选人说的话，不要输出分析过程、旁白或序号");
+
+        return sb.toString();
     }
 
     @Override
@@ -128,10 +166,45 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     /**
-     * 回答 + AI 追问（一次性拿到完整回答再返回）
+     * 回答 + AI 追问。
+     *
+     * 为什么要加锁：同一场面试如果两个请求同时进来（用户手快连点、或者开了两个标签页），
+     * 两边都会往 Redis 对话历史里塞自己的回答、再各自读一遍历史，
+     * 结果 AI 看到的是半截对话、回复顺序也是乱的。
+     * 所以按 sessionId 加 Redisson 锁，把同一场面试的回答串行化。
      */
     @Override
     public ReplyVO reply(ReplyRequest request, String overrideProvider) {
+        String sessionId = request.getSessionId();
+
+        RLock lock = redissonClient.getLock(RedisKeyConstants.interviewReplyLock(sessionId));
+        boolean locked = false;
+        try {
+            // 最多等 3 秒（正常情况下锁是立刻拿到的）；
+            // 120 秒是"锁自动过期时间"，防止服务中途挂掉导致锁一直不释放
+            locked = lock.tryLock(3, 120, TimeUnit.SECONDS);
+            if (!locked) {
+                throw new BusinessException("上一轮还在生成回答，请等 AI 说完再发送");
+            }
+
+            // 拿到锁了，真正的业务逻辑放在 doReply 里
+            return doReply(request, overrideProvider);
+        } catch (InterruptedException e) {
+            // 线程被中断：先把中断标记恢复回去（这是规范做法），再转成业务异常
+            Thread.currentThread().interrupt();
+            throw new BusinessException("请求被中断，请重试");
+        } finally {
+            // 只解"自己加的锁"，避免解掉别人持有的锁
+            if (locked && lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+
+    /**
+     * 真正的回答逻辑（被上面那把锁保护着执行）
+     */
+    private ReplyVO doReply(ReplyRequest request, String overrideProvider) {
         // 1. 校验 + 组装上下文
         ReplyContext ctx = prepareReply(request, overrideProvider);
 
@@ -139,9 +212,9 @@ public class InterviewServiceImpl implements InterviewService {
         ChatClient chatClient = llmProviderRegistry.getClient(
                 LlmProviderEnum.fromString(ctx.provider()));
 
-        // 3. 调用 AI（system prompt 按当前环节拼）
+        // 3. 调用 AI（system prompt 按当前环节 + 当前进度拼）
         String aiReply = chatClient.prompt()
-                .system(buildSystemPrompt(ctx.stage()))
+                .system(buildSystemPrompt(ctx.stage(), ctx.answeredRounds()))
                 .messages(ctx.messages())
                 .call()
                 .content();
@@ -176,13 +249,17 @@ public class InterviewServiceImpl implements InterviewService {
                         .eq(InterviewSession::getSessionId, sessionId)
         );
         if (session == null) {
-            throw new RuntimeException("会话不存在");
+            throw new BusinessException("会话不存在");
         }
 
-        // 2. 归属校验
+        // 2. 归属校验 + 状态校验
         Long currentUserId = StpUtil.getLoginIdAsLong();
         if (!session.getUserId().equals(currentUserId)) {
-            throw new RuntimeException("无权访问该面试");
+            throw BusinessException.forbidden("无权访问该面试");
+        }
+        // 面试已经结束就不能再继续回答了
+        if ("FINISHED".equals(session.getStatus())) {
+            throw new BusinessException("本场面试已结束，无法继续回答");
         }
 
         // 3. 模型优先级：请求级覆盖(L2) > 会话配置(L1)
@@ -263,15 +340,16 @@ public class InterviewServiceImpl implements InterviewService {
         }
         InterviewStage stage = InterviewStage.of(answeredRounds);
 
-        return new ReplyContext(sessionId, redisKey, provider, messages, stage);
+        return new ReplyContext(sessionId, redisKey, provider, messages, stage, answeredRounds);
     }
 
     /**
      * 回答流程的上下文：
-     * 会话 id、Redis key、本回合使用的模型、组装好的 messages、当前面试环节
+     * 会话 id、Redis key、本回合使用的模型、组装好的 messages、
+     * 当前面试环节、候选人已回答轮数（拼 prompt 时要用来算进度）
      */
     private record ReplyContext(String sessionId, String redisKey, String provider,
-                                List<Message> messages, InterviewStage stage) {
+                                List<Message> messages, InterviewStage stage, int answeredRounds) {
     }
 
     /**
@@ -286,18 +364,18 @@ public class InterviewServiceImpl implements InterviewService {
                         .eq(InterviewSession::getSessionId, sessionId)
         );
         if (session == null) {
-            throw new RuntimeException("会话不存在");
+            throw new BusinessException("会话不存在");
         }
 
         // 2. 归属校验：不校验就能改别人的面试
         Long currentUserId = StpUtil.getLoginIdAsLong();
         if (!session.getUserId().equals(currentUserId)) {
-            throw new RuntimeException("无权访问该面试");
+            throw BusinessException.forbidden("无权访问该面试");
         }
 
         // 3. 已结束的面试不允许再换模型
         if (!"ONGOING".equals(session.getStatus())) {
-            throw new RuntimeException("只有进行中的面试可以切换模型");
+            throw new BusinessException("只有进行中的面试可以切换模型");
         }
 
         // 4. 提前校验合法性，并统一成小写存储（避免库里出现 DeepSeek/deepseek 两种写法）
@@ -323,15 +401,15 @@ public class InterviewServiceImpl implements InterviewService {
                         .eq(InterviewSession::getSessionId, sessionId)
         );
         if (session == null) {
-            throw new RuntimeException("会话不存在");
+            throw new BusinessException("会话不存在");
         }
         if ("FINISHED".equals(session.getStatus())) {
-            throw new RuntimeException("该面试已结束");
+            throw new BusinessException("该面试已结束");
         }
 
         Long currentUserId = StpUtil.getLoginIdAsLong();
         if (!session.getUserId().equals(currentUserId)) {
-            throw new RuntimeException("无权访问该面试");
+            throw BusinessException.forbidden("无权访问该面试");
         }
 
         // 2.更新状态为FINISHED
@@ -342,7 +420,7 @@ public class InterviewServiceImpl implements InterviewService {
                         .set(InterviewSession::getStatus,"FINISHED")
         );
         if (updated == 0) {
-            throw new RuntimeException("该面试已结束");
+            throw new BusinessException("该面试已结束");
         }
 
         //3.发送消息到rabbitMQ中，异步评分
@@ -364,12 +442,12 @@ public class InterviewServiceImpl implements InterviewService {
                         .eq(InterviewSession::getSessionId, sessionId)
         );
         if (session == null) {
-            throw new RuntimeException("会话不存在");
+            throw new BusinessException("会话不存在");
         }
 
         Long currentUserId = StpUtil.getLoginIdAsLong();
         if (!session.getUserId().equals(currentUserId)) {
-            throw new RuntimeException("无权访问该面试");
+            throw BusinessException.forbidden("无权访问该面试");
         }
 
         //2.获取面试报告
@@ -459,9 +537,9 @@ public class InterviewServiceImpl implements InterviewService {
         ChatClient chatClient = llmProviderRegistry.getClient(providerEnum);
 
 
-        // 2.调用ai开场白（开场白固定属于"自我介绍"环节）
+        // 2.调用ai开场白（开场白固定属于"自我介绍"环节，此时候选人还没回答过，轮数是 0）
         String opening = chatClient.prompt()
-                .system(buildSystemPrompt(InterviewStage.SELF_INTRO))
+                .system(buildSystemPrompt(InterviewStage.SELF_INTRO, 0))
                 .user("请开始面试，先让候选人做自我介绍")
                 .call()
                 .content();

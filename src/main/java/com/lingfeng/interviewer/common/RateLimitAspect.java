@@ -55,9 +55,9 @@ public class RateLimitAspect {
                 String.valueOf(now)
         );
 
-        //4.返回0表示被限流
+        //4.返回0表示被限流（429 而不是 500，前端能区分"被限流"和"真出错了"）
         if(current == null || current == 0){
-            throw new RuntimeException("请求过于频繁,请稍后再试");
+            throw BusinessException.tooManyRequests("请求过于频繁，请稍后再试");
         }
 
         //5.放行
