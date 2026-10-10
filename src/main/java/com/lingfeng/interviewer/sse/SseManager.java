@@ -29,10 +29,7 @@ public class SseManager {
     /** 进度缓存 10 分钟，用于刷新页面后恢复 */
     private static final Duration PROGRESS_TTL = Duration.ofMinutes(10);
 
-    /**
-     * key -> 连接。
-     * 报告进度用 sessionId 作 key；流式回答用 sessionId:chat 作 key，两者互不干扰。
-     */
+    /** key(这里就是 sessionId) -> 连接 */
     private final Map<String, SseEmitter> emitterMap = new ConcurrentHashMap<>();
 
     private final StringRedisTemplate stringRedisTemplate;
@@ -59,11 +56,6 @@ public class SseManager {
             }
         }
         return emitter;
-    }
-
-    /** 只建立连接，不补发进度（流式回答用） */
-    public SseEmitter create(String key) {
-        return create(key, null);
     }
 
     /**

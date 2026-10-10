@@ -40,11 +40,13 @@ public class VoiceController {
         // 3. TTS
         byte[] aiAudio = voiceService.textToSpeech(reply.getMessage());
 
-        // 4. 返回
+        // 4. 返回（stage / stageName 透传，前端要用它显示"当前在哪个环节"）
         return Result.success(Map.of(
                 "userText", userText,
                 "aiText", reply.getMessage(),
-                "aiAudio", Base64.getEncoder().encodeToString(aiAudio)
+                "aiAudio", Base64.getEncoder().encodeToString(aiAudio),
+                "stage", reply.getStage() == null ? "" : reply.getStage(),
+                "stageName", reply.getStageName() == null ? "" : reply.getStageName()
         ));
     }
 }
