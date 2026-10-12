@@ -2,6 +2,7 @@ package com.lingfeng.interviewer.controller;
 
 import com.lingfeng.interviewer.common.RateLimit;
 import com.lingfeng.interviewer.common.Result;
+import com.lingfeng.interviewer.config.LlmProviderRegistry;
 import com.lingfeng.interviewer.dto.*;
 import com.lingfeng.interviewer.mapper.InterviewSessionMapper;
 import com.lingfeng.interviewer.service.InterviewService;
@@ -16,6 +17,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.awt.*;
 import java.util.List;
+import java.util.Set;
 
 @Validated
 @RestController
@@ -27,6 +29,9 @@ public class InterviewController {
 
     @Autowired
     private InterviewService interviewService;
+
+    @Autowired
+    private LlmProviderRegistry llmProviderRegistry;
 
     /*
     * 开启一场新面试
@@ -57,6 +62,15 @@ public class InterviewController {
                                        @RequestParam String provider){
         interviewService.switchProvider(sessionId, provider);
         return Result.success(null);
+    }
+
+    /*
+    * 当前注册中心里所有可用的模型
+    * 前端下拉框用它来渲染 —— 以后新增模型，前端不用改代码就会多出这个选项
+    * */
+    @GetMapping("/providers")
+    public Result<Set<String>> providers(){
+        return Result.success(llmProviderRegistry.availableProviders());
     }
 
     /*

@@ -6,7 +6,6 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.conditions.update.LambdaUpdateChainWrapper;
 import com.lingfeng.interviewer.common.BusinessException;
 import com.lingfeng.interviewer.common.InterviewStage;
-import com.lingfeng.interviewer.common.LlmProviderEnum;
 import com.lingfeng.interviewer.common.RedisKeyConstants;
 import com.lingfeng.interviewer.config.LlmProviderRegistry;
 import com.lingfeng.interviewer.dto.*;
@@ -213,9 +212,8 @@ public class InterviewServiceImpl implements InterviewService {
         // 1. 校验 + 组装上下文
         ReplyContext ctx = prepareReply(request, overrideProvider);
 
-        // 2. 选模型
-        ChatClient chatClient = llmProviderRegistry.getClient(
-                LlmProviderEnum.fromString(ctx.provider()));
+        // 2. 选模型（注册中心内部会做名字归一化 + 合法性校验）
+        ChatClient chatClient = llmProviderRegistry.getClient(ctx.provider());
 
         // 3. 调用 AI（system prompt 按当前环节 + 当前进度拼）
         String aiReply = chatClient.prompt()
@@ -392,10 +390,13 @@ public class InterviewServiceImpl implements InterviewService {
             throw new BusinessException("只有进行中的面试可以切换模型");
         }
 
-        // 4. 提前校验合法性，并统一成小写存储（避免库里出现 DeepSeek/deepseek 两种写法）
-        String normalized = LlmProviderEnum.fromString(provider).name().toLowerCase();
+        // 4. 统一成小写存储（避免库里出现 DeepSeek/deepseek 两种写法）
+        String normalized = provider == null ? "" : provider.trim().toLowerCase();
 
-        // 5. 与当前模型相同则无需更新
+        // 5. 提前校验模型是否受支持：拿不到就会抛 BusinessException，不用等下一回合才发现
+        llmProviderRegistry.getClient(normalized);
+
+        // 6. 与当前模型相同则无需更新
         if (normalized.equals(session.getProvider())) {
             return;
         }
@@ -588,8 +589,7 @@ public class InterviewServiceImpl implements InterviewService {
         interviewSessionMapper.insert(session);
 
         // 用 actualProvider 选模型（入参 provider 可能为 null，actualProvider 才有兜底值）
-        LlmProviderEnum providerEnum = LlmProviderEnum.fromString(actualProvider);
-        ChatClient chatClient = llmProviderRegistry.getClient(providerEnum);
+        ChatClient chatClient = llmProviderRegistry.getClient(actualProvider);
 
 
         // 2.调用ai开场白（开场白固定属于"自我介绍"环节，此时候选人还没回答过，轮数是 0）
