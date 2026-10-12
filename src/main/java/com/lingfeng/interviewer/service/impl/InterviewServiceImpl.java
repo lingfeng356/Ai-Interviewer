@@ -20,6 +20,7 @@ import com.lingfeng.interviewer.rabbitMQ.producer.InterviewEvaluateProducer;
 import com.lingfeng.interviewer.service.InterviewService;
 import com.lingfeng.interviewer.service.RagService;
 import com.lingfeng.interviewer.service.VoiceService;
+import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.ai.chat.messages.Message;
@@ -30,6 +31,9 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.ArrayList;
 import java.util.Base64;
@@ -37,6 +41,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Service
 public class InterviewServiceImpl implements InterviewService {
 
@@ -269,6 +274,8 @@ public class InterviewServiceImpl implements InterviewService {
 
         Resume resume = resumeMapper.selectById(session.getResumeId());
         String resumeText = resume != null ? resume.getContent() : "";
+        // 结构化画像（简历解析的产物，JSON 字符串）；没解析出来就是空串
+        String resumeProfile = (resume != null && resume.getProfile() != null) ? resume.getProfile() : "";
 
         String redisKey = RedisKeyConstants.interviewHistory(sessionId);
 
@@ -294,7 +301,14 @@ public class InterviewServiceImpl implements InterviewService {
         // 7. 转成 Spring AI 的 Message 列表
         List<Message> messages = new ArrayList<>();
 
-        // 简历
+        // 候选人画像（简历解析出来的要点，比几千字全文更聚焦，所以放在全文前面）
+        if (!resumeProfile.isEmpty()) {
+            messages.add(new UserMessage(
+                    "<user_input>\n候选人的结构化画像（从简历解析）：\n" + resumeProfile + "\n</user_input>"
+            ));
+        }
+
+        // 简历全文
         if (resumeText != null && !resumeText.isEmpty()) {
             messages.add(new UserMessage(
                     "<user_input>\n这是候选人的简历：\n" + resumeText + "\n</user_input>\n" +
@@ -393,7 +407,22 @@ public class InterviewServiceImpl implements InterviewService {
         );
     }
 
+    /**
+     * 结束面试，并投递异步评分任务。
+     *
+     * 事务要解决什么：
+     * 1. 事务里只做数据库操作（把会话置为 FINISHED），保证这一步的原子性；
+     * 2. MQ 投递放到「事务提交之后」再发 —— 如果直接在事务里发，
+     *    万一下面抛异常导致回滚，消息却已经飞出去了，
+     *    消费端就会读到一个"还没结束"的会话，产生脏数据；
+     * 3. 提交后投递失败，做一次补偿：把状态改回 ONGOING，
+     *    用户可以重新点"结束面试"，而不是卡在"已结束但永远没报告"。
+     *
+     * 注意：这是「最终一致性」的简化版。要做到彻底可靠得上本地消息表 + 定时补偿，
+     * 对这个项目来说上面这套已经够用了。
+     */
     @Override
+    @Transactional
     public InterviewReportVO finish(String sessionId) {
         // 1.查session，确认是否存在并且状态为ONGOING
         InterviewSession session = interviewSessionMapper.selectOne(
@@ -423,14 +452,40 @@ public class InterviewServiceImpl implements InterviewService {
             throw new BusinessException("该面试已结束");
         }
 
-        //3.发送消息到rabbitMQ中，异步评分
-        interviewEvaluateProducer.send(sessionId);
+        //3.注册"事务提交之后"的回调，在回调里投递评分任务
+        //  TransactionSynchronization 的方法都是 default，只实现需要的那一个就行
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                sendEvaluateTask(sessionId);
+            }
+        });
 
         //4.立刻返回生成中
         InterviewReportVO vo = new InterviewReportVO();
         vo.setSessionId(sessionId);
         vo.setSummary("报告生成中，请稍后查询");
         return vo;
+    }
+
+    /**
+     * 投递评分任务到 RabbitMQ。
+     *
+     * 失败就把会话状态改回 ONGOING —— 这样用户重新点一次"结束面试"还能救回来。
+     * 此时外层事务已经提交，所以这条 update 会立即生效。
+     */
+    private void sendEvaluateTask(String sessionId) {
+        try {
+            interviewEvaluateProducer.send(sessionId);
+        } catch (Exception e) {
+            log.error("评分任务投递失败，回滚会话状态以便重试, sessionId={}", sessionId, e);
+            interviewSessionMapper.update(null,
+                    new LambdaUpdateWrapper<InterviewSession>()
+                            .eq(InterviewSession::getSessionId, sessionId)
+                            .eq(InterviewSession::getStatus, "FINISHED")
+                            .set(InterviewSession::getStatus, "ONGOING")
+            );
+        }
     }
 
     //查看本场面试报告

@@ -41,6 +41,10 @@ public class InterviewEvaluateConsumer extends AbstractStreamConsumer<String>{
     @Autowired
     private ObjectMapper objectMapper;
 
+    /** 和简历解析用的是同一个结构化输出调用器 */
+    @Autowired
+    private StructuredOutputInvoker structuredOutputInvoker;
+
     @RabbitListener(queues = RabbitMQConfig.EVALUATE_QUEUE)
     public void onMessage(String sessionId) {
         handle(sessionId);
@@ -91,8 +95,7 @@ public class InterviewEvaluateConsumer extends AbstractStreamConsumer<String>{
 
             ChatClient chatClient = llmProviderRegistry.getDefault();
 
-            StructuredOutputInvoker invoker = new StructuredOutputInvoker();
-            InterviewReportVO report = invoker.invoke(
+            InterviewReportVO report = structuredOutputInvoker.invoke(
                     chatClient,
                     evaluatePrompt,
                     "对话记录\n" + historyText,

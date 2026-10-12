@@ -2,7 +2,18 @@ package com.lingfeng.interviewer.common;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.converter.BeanOutputConverter;
+import org.springframework.stereotype.Component;
 
+/**
+ * 结构化输出调用器：让大模型稳定地吐出能被反序列化成 Java 对象的 JSON。
+ *
+ * 目前被两处复用：
+ * 1. 简历解析（纯文本 → ResumeProfile）
+ * 2. 面试评分（对话记录 → InterviewReportVO）
+ *
+ * 无状态，所以注册成单例 Bean 复用即可。
+ */
+@Component
 public class StructuredOutputInvoker {
 
     private static final int MAX_RETRY = 3;
