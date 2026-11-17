@@ -5,7 +5,13 @@ import com.lingfeng.interviewer.dto.*;
 import java.util.List;
 
 public interface InterviewService {
-    StartInterviewVO start(Long resumeId, String provider,String requestId);
+    /**
+     * 开始一场面试。
+     *
+     * @param mode AGENT / CLASSIC，为空按 AGENT 处理。AGENT 模式下每轮会先让模型
+     *             自主调用工具（查简历 / 查知识库 / 记笔记），再给出问题。
+     */
+    StartInterviewVO start(Long resumeId, String provider, String requestId, String mode);
 
     /**
      * 回答 + AI 追问

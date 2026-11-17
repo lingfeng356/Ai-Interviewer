@@ -35,12 +35,14 @@ public class InterviewController {
 
     /*
     * 开启一场新面试
+    * mode 可选：AGENT（默认，模式化 Agent 面试）/ CLASSIC（改造前的固定轮次模式）
     * */
     @PostMapping("/start")
     public Result<StartInterviewVO> start(@NotNull(message = "resumeId不能为空") @RequestParam Long resumeId,
                                           @RequestParam(required = false) String provider,
-                                          @RequestParam(required = false) String requestId){
-        return Result.success(interviewService.start(resumeId,provider,requestId));
+                                          @RequestParam(required = false) String requestId,
+                                          @RequestParam(required = false) String mode){
+        return Result.success(interviewService.start(resumeId, provider, requestId, mode));
     }
 
     /*
