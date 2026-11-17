@@ -33,3 +33,8 @@ build/
 .vscode/
 
 application-local.yml
+
+### 前端（并入本仓库的 web/ 子目录） ###
+web/node_modules/
+web/dist/
+web/_dev.log
