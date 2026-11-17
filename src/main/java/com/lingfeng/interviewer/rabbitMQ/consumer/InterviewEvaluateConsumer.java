@@ -85,9 +85,16 @@ public class InterviewEvaluateConsumer extends AbstractStreamConsumer<String>{
             // 2.调用AI评分（最耗时的一步）
             progress(sessionId, "AI_EVALUATING", 60, "AI 正在综合评估");
 
+            // Agent 模式下面试官会把观察记成笔记，这里一并交给评估模型：
+            // 这样报告能说出“你提到用过 Redis，但没答出持久化方案”这种有依据的话，
+            // 而不是把几千字对话重新读一遍再猜。
+            String memoText = readMemoDigest(sessionId);
+
             String evaluatePrompt = """
                     你是一个资深的 Java 后端面试官，现在面试已经结束。
                     请根据以下对话记录，对候选人进行综合评估。
+                    如果同时给了“面试官笔记”，可以参考其中的疑点与亮点；
+                    但笔记只是辅助，与对话记录冲突时以对话记录为准，不要只凭笔记下结论。
                     输出 JSON，字段包括：
                     totalScore（0-100 的整数）、summary（总体评价）、
                     strengths（优点）、weaknesses（不足）、suggestion（改进建议）。
@@ -95,10 +102,15 @@ public class InterviewEvaluateConsumer extends AbstractStreamConsumer<String>{
 
             ChatClient chatClient = llmProviderRegistry.getDefault();
 
+            String evaluateInput = "对话记录\n" + historyText
+                    + (memoText.isBlank()
+                        ? ""
+                        : "\n\n面试官笔记（面试过程中记录，供参考）：\n" + memoText);
+
             InterviewReportVO report = structuredOutputInvoker.invoke(
                     chatClient,
                     evaluatePrompt,
-                    "对话记录\n" + historyText,
+                    evaluateInput,
                     InterviewReportVO.class
             );
 
@@ -125,6 +137,38 @@ public class InterviewEvaluateConsumer extends AbstractStreamConsumer<String>{
             sseManager.complete(sessionId);
             // 注意：这里不重新抛异常。当前没配死信队列，重抛会让消息无限重回队列；
             // 前端已经通过 FAILED 事件拿到提示，用户可以重新发起。
+        }
+    }
+
+    /**
+     * 读取面试官 Agent 记下的笔记，拼成一段文本；没有就返回空串。
+     * Redis 里存的是 “类型|轮次|内容”。
+     */
+    private String readMemoDigest(String sessionId) {
+        try {
+            List<String> raw = stringRedisTemplate.opsForList()
+                    .range(RedisKeyConstants.agentMemo(sessionId), 0, -1);
+            if (raw == null || raw.isEmpty()) {
+                return "";
+            }
+            List<String> lines = new ArrayList<>();
+            for (String item : raw) {
+                String[] parts = item.split("\\|", 3);
+                if (parts.length < 3) {
+                    continue;
+                }
+                String label = switch (parts[0]) {
+                    case "STRENGTH" -> "优点";
+                    case "WEAKNESS" -> "不足";
+                    default -> "疑点";
+                };
+                lines.add("· [" + label + "] " + parts[2]);
+            }
+            return String.join("\n", lines);
+        } catch (Exception e) {
+            // 笔记读不到不影响评分，退化为只用对话记录
+            log.warn("读取面试笔记失败, sessionId={}", sessionId, e);
+            return "";
         }
     }
 
