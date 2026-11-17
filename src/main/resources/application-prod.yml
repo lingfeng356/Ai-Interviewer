@@ -1,0 +1,102 @@
+# ============================================================
+# 生产环境配置
+#
+# 启动方式（覆盖 application.yml 里的 profiles.active=local）：
+#   java -jar interviewer-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
+#
+# 敏感信息一律走环境变量。启动前先 export（或者写进 systemd 的
+# EnvironmentFile），例如：
+#   export MYSQL_PASSWORD=xxx
+#   export PG_PASSWORD=xxx
+#   export MQ_PASSWORD=xxx
+#   export REDIS_PASSWORD=xxx
+#   export DEEPSEEK_API_KEY=sk-xxx
+#   export DASHSCOPE_API_KEY=sk-xxx
+# ============================================================
+
+server:
+  port: 8081
+
+spring:
+
+  # ---------- 业务数据库 MySQL ----------
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/ai_interviewer?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # 服务器内存有限，连接池别开太大（默认 10 个连接就够这个项目用）
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 10000
+
+  # ---------- RabbitMQ（异步评分任务） ----------
+  rabbitmq:
+    host: 127.0.0.1
+    port: 5672
+    username: ${MQ_USERNAME:guest}
+    password: ${MQ_PASSWORD:guest}
+
+  # ---------- Redis（Sa-Token 会话 / 对话历史 / 分布式锁 / 进度缓存） ----------
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      # deploy/docker-compose.yml 里的 Redis 没设密码。
+      # 如果你给 Redis 配了 requirepass，这里加一行：
+      #   password: ${REDIS_PASSWORD}
+      timeout: 3s
+
+  # ---------- 语音 ASR / TTS（DashScope） ----------
+  ai:
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY}
+
+    # ---------- 注意：Ollama 在这里仍然要保留 ----------
+    # 知识库 RAG 的 embedding 用的是 Ollama 的 shaw/dmeta-embedding-zh，
+    # 所以服务器上必须跑着 Ollama，否则知识库入库会失败。
+    # （embedding 模型很小，CPU 也能跑；这里禁用的只是用 Ollama 做面试对话）
+    ollama:
+      base-url: http://127.0.0.1:11434
+      embedding:
+        options:
+          model: shaw/dmeta-embedding-zh
+
+  # 生产环境别打印启动 banner
+  main:
+    banner-mode: off
+
+# ========== 向量库（PostgreSQL + pgvector） ==========
+# 密码要和 deploy/docker-compose.yml 里的 PG_PASSWORD 是同一个
+vector-store:
+  url: jdbc:postgresql://127.0.0.1:5432/ai_interviewer
+  username: ${PG_USERNAME:postgres}
+  password: ${PG_PASSWORD}
+  dimensions: 768
+  # 第一次部署保持 true，会自动创建 vector 扩展和 vector_store 表；
+  # 跑通之后可以改成 false（表已存在，不用每次启动都检查）
+  initialize-schema: true
+
+# ========== LLM ==========
+llm:
+  default-provider: deepseek
+  providers:
+    deepseek:
+      api-key: ${DEEPSEEK_API_KEY}
+      base-url: https://api.deepseek.com
+      model: deepseek-chat
+
+    ollama:
+      # 服务器上不跑生成模型，直接关掉：
+      # 这个 Bean 不会被创建 → 不注册进 LlmProviderRegistry
+      # → 前端下拉框也不会出现这个选项（接口还会返回 400）
+      enabled: false
+
+# ========== 日志 ==========
+logging:
+  file:
+    name: logs/ai-interviewer.log
+  level:
+    root: info
+    com.lingfeng.interviewer: info

@@ -16,7 +16,10 @@ spring:
           model: shaw/dmeta-embedding-zh
 
     dashscope:
-      api-key: sk-ws-H.PLPXYPY.gRxU.MEUCIF2Jln5bU066iL_yDxL7UJyPxuu9haNU-NcuPDomuZ3TAiEAqIfYvEJeKwoi5VhJQd7ghl_eazUwiN5OhXElfSf3-l8
+      # 真实 Key 不要写进仓库（仓库是公开的）：
+      #   本地 → 写在 application-local.yml（已被 .gitignore 忽略）
+      #   生产 → 用环境变量 DASHSCOPE_API_KEY 注入
+      api-key: ${DASHSCOPE_API_KEY:}
 
   datasource:
     url: url
@@ -47,9 +50,18 @@ llm:
   default-provider: deepseek        # 默认用哪个模型
   providers:                        # 所有模型都放这里
     deepseek:
-      api-key: api-key
+      api-key: ${DEEPSEEK_API_KEY:}
       base-url: https://api.deepseek.com
       model: deepseek-chat
     ollama:
       base-url: http://localhost:11434
       model: qwen3:4b
+
+# ========== 向量库（PostgreSQL + pgvector） ==========
+# 部署时用环境变量覆盖，例如：PG_PASSWORD=xxx java -jar xxx.jar
+vector-store:
+  url: ${PG_URL:jdbc:postgresql://localhost:5432/ai_interviewer}
+  username: ${PG_USERNAME:postgres}
+  password: ${PG_PASSWORD:postgres123456}
+  dimensions: 768                 # 要和 embedding 模型一致
+  initialize-schema: true         # 首次启动自动建表，之后可以关掉
