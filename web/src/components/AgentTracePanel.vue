@@ -17,7 +17,8 @@ const TOOL_LABELS = {
   searchResume: '检索简历',
   searchKnowledge: '查知识库',
   searchQuestionBank: '查题库',
-  saveMemo: '记笔记'
+  saveMemo: '记笔记',
+  requestNextStage: '申请换环节'
 }
 
 const toolCalls = computed(() => (props.agent && props.agent.toolCalls) || [])

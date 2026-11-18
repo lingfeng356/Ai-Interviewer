@@ -17,6 +17,8 @@ import java.util.List;
  * @param provider       本回合使用的模型名
  * @param messages       已经拼好的 Spring AI 消息列表（画像 / 简历 / 知识库 / 历史）
  * @param stage          当前面试环节
+ * @param stageStartRound 进入当前环节时的轮次（正常情况下等于环节起始轮数，
+ *                        模型申请提前换环节后会被改写，用于算“本环节问到第几题”）
  * @param answeredRounds 候选人已回答的轮数（开场白不算）
  * @param resumeId       简历 id
  * @param resumeText     简历全文（供 searchResume 工具检索）
@@ -28,6 +30,7 @@ public record ReplyContext(
         String provider,
         List<Message> messages,
         InterviewStage stage,
+        int stageStartRound,
         int answeredRounds,
         Long resumeId,
         String resumeText,

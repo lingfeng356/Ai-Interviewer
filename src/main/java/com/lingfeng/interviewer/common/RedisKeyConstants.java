@@ -20,6 +20,13 @@ public class RedisKeyConstants {
     /** 面试官 Agent 的工作记忆（对候选人的观察笔记） */
     public static final String AGENT_MEMO = "agent:memo:";
 
+    /**
+     * 面试环节的覆盖值：只有模型通过 requestNextStage 申请、且系统批准后才会写入。
+     * 格式 “环节名|进入该环节时的轮次”，例如 “TECH|4”。
+     * 作用只是「提前推进」，不会让环节倒退或停住（见 InterviewServiceImpl#resolveStage）。
+     */
+    public static final String INTERVIEW_STAGE = "interview:stage:";
+
     /* 模式取值：对外也用这些字符串，避免各处硬编码 */
     public static final String AGENT_MODE_AGENT = "AGENT";
     public static final String AGENT_MODE_CLASSIC = "CLASSIC";
@@ -52,5 +59,9 @@ public class RedisKeyConstants {
 
     public static String agentMemo(String sessionId){
         return AGENT_MEMO + sessionId;
+    }
+
+    public static String interviewStage(String sessionId){
+        return INTERVIEW_STAGE + sessionId;
     }
 }

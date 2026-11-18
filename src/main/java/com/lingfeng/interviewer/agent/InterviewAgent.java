@@ -74,7 +74,8 @@ public class InterviewAgent {
         try {
             text = chatClient.prompt()
                     .system(AgentPromptBuilder.agent(
-                            ctx.stage(), ctx.answeredRounds(), memoDigest, trace.remaining()))
+                            ctx.stage(), ctx.answeredRounds(), ctx.stageStartRound(),
+                            memoDigest, trace.remaining()))
                     .messages(ctx.messages())
                     .tools(tools)
                     .call()
@@ -90,7 +91,8 @@ public class InterviewAgent {
                     ctx.sessionId(), e.toString());
             mode = RedisKeyConstants.AGENT_MODE_FALLBACK;
             text = chatClient.prompt()
-                    .system(AgentPromptBuilder.classic(ctx.stage(), ctx.answeredRounds()))
+                    .system(AgentPromptBuilder.classic(
+                            ctx.stage(), ctx.answeredRounds(), ctx.stageStartRound()))
                     .messages(ctx.messages())
                     .call()
                     .content();
