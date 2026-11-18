@@ -16,6 +16,7 @@ const expanded = ref(false)
 const TOOL_LABELS = {
   searchResume: '检索简历',
   searchKnowledge: '查知识库',
+  searchQuestionBank: '查题库',
   saveMemo: '记笔记'
 }
 

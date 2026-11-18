@@ -1,6 +1,8 @@
 package com.lingfeng.interviewer.agent;
 
 import com.lingfeng.interviewer.common.RedisKeyConstants;
+import com.lingfeng.interviewer.questionbank.QuestionBankService;
+import com.lingfeng.interviewer.questionbank.QuestionItem;
 import com.lingfeng.interviewer.service.RagService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
@@ -33,15 +35,18 @@ public class InterviewTools {
 
     private final AgentContext ctx;
     private final RagService ragService;
+    private final QuestionBankService questionBankService;
     private final StringRedisTemplate stringRedisTemplate;
     private final AgentTraceRecorder trace;
 
     public InterviewTools(AgentContext ctx,
                           RagService ragService,
+                          QuestionBankService questionBankService,
                           StringRedisTemplate stringRedisTemplate,
                           AgentTraceRecorder trace) {
         this.ctx = ctx;
         this.ragService = ragService;
+        this.questionBankService = questionBankService;
         this.stringRedisTemplate = stringRedisTemplate;
         this.trace = trace;
     }
@@ -122,6 +127,69 @@ public class InterviewTools {
             log.warn("知识库检索失败, question={}", q, e);
             record("searchKnowledge", q, "检索异常: " + e.getMessage(), start, false);
             return "知识库暂时不可用，请基于你自己的技术经验继续提问，但不要断言候选人的答案一定错误。";
+        }
+    }
+
+    /**
+     * 题库检索：拿一道「经典题 + 答题要点」，用来对齐标准考点。
+     *
+     * 和 searchKnowledge 的分工：
+     * - searchKnowledge 查的是「这个知识点的标准答案」；
+     * - searchQuestionBank 查的是「这个考点通常怎么问、要答到哪几点」。
+     * 前者用来判断对错，后者用来出题和自查覆盖度。
+     */
+    @Tool(description = """
+            从题库中检索某个知识点的经典面试题和答题要点。
+            当你想考察一个标准考点（如 HashMap 扩容、MySQL 索引失效、缓存穿透），
+            或者想确认自己的追问有没有覆盖关键答题点时调用。
+            不要用它替代顺着候选人回答的追问；一次最多取 2 道题。
+            """)
+    public String searchQuestionBank(
+            @ToolParam(description = "知识点关键词，如 HashMap、线程池、索引失效、缓存穿透") String topic,
+            @ToolParam(description = "难度：1 基础 / 2 进阶 / 3 深入；不确定就传 2") String difficulty) {
+
+        long start = System.currentTimeMillis();
+        String kw = topic == null ? "" : topic.trim();
+
+        if (trace.exhausted()) {
+            return stopMessage("searchQuestionBank");
+        }
+        if (kw.isEmpty()) {
+            record("searchQuestionBank", kw, "关键词为空", start, false);
+            return "关键词不能为空，请换一个知识点再试。";
+        }
+
+        try {
+            Integer level = parseDifficulty(difficulty);
+            List<QuestionItem> hits = questionBankService.search(kw, level, 2);
+            if (hits.isEmpty()) {
+                String categories = String.join("、", questionBankService.categories());
+                String msg = "题库里没有命中「" + kw + "」。可用分类：" + categories
+                        + "。请基于你自己的技术经验提问，不要编造题库内容。";
+                record("searchQuestionBank", kw, msg, start, true);
+                return msg;
+            }
+
+            StringBuilder sb = new StringBuilder("题库命中 ").append(hits.size()).append(" 道：\n");
+            int index = 1;
+            for (QuestionItem q : hits) {
+                sb.append(index++).append(". 【").append(q.getCategory()).append(" · ")
+                        .append(q.getTopic()).append("｜难度 ").append(q.getDifficulty()).append("】")
+                        .append(q.getQuestion()).append('\n');
+                if (q.getPoints() != null && !q.getPoints().isEmpty()) {
+                    sb.append("   答题要点：").append(String.join("；", q.getPoints())).append('\n');
+                }
+                if (q.getFollowUps() != null && !q.getFollowUps().isEmpty()) {
+                    sb.append("   可追问：").append(String.join("；", q.getFollowUps())).append('\n');
+                }
+            }
+            String result = sb.toString();
+            record("searchQuestionBank", kw, result, start, true);
+            return result;
+        } catch (Exception e) {
+            log.warn("题库检索失败, topic={}", kw, e);
+            record("searchQuestionBank", kw, "检索异常: " + e.getMessage(), start, false);
+            return "题库暂时不可用，请基于你自己的技术经验提问。";
         }
     }
 
@@ -222,5 +290,23 @@ public class InterviewTools {
             case "STRENGTH", "WEAKNESS" -> t;
             default -> "DOUBT";
         };
+    }
+
+    /** 难度参数容错：模型可能传 "2"、"进阶"、"中等"，统一成 1~3 */
+    private Integer parseDifficulty(String difficulty) {
+        if (difficulty == null || difficulty.isBlank()) {
+            return 2;
+        }
+        String d = difficulty.trim();
+        if (d.contains("1") || d.contains("基础") || d.contains("简单")) {
+            return 1;
+        }
+        if (d.contains("3") || d.contains("深入") || d.contains("困难")) {
+            return 3;
+        }
+        if (d.contains("2") || d.contains("进阶") || d.contains("中等")) {
+            return 2;
+        }
+        return 2;
     }
 }

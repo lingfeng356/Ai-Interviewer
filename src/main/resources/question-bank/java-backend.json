@@ -1,0 +1,529 @@
+{
+  "version": 1,
+  "note": "考点按公开面经的常见题目整理（参考 JavaGuide、小林coding、CS-Notes 等公开资料的目录与考点分布），题干与答题要点均为自行归纳，未逐条复制原文。",
+  "questions": [
+    {
+      "id": "java-01",
+      "category": "Java基础",
+      "topic": "String 不可变",
+      "difficulty": 1,
+      "question": "String 为什么设计成不可变的？",
+      "points": ["内部字符数组被 final 修饰且不对外暴露", "可以安全地放进常量池复用", "hashCode 可缓存，作为 HashMap 的 key 更高效", "天然线程安全"],
+      "followUps": ["String、StringBuilder、StringBuffer 有什么区别？"]
+    },
+    {
+      "id": "java-02",
+      "category": "Java基础",
+      "topic": "equals 与 hashCode",
+      "difficulty": 1,
+      "question": "== 和 equals 的区别？重写 equals 为什么必须重写 hashCode？",
+      "points": ["== 比较基本类型的值或引用地址", "equals 默认也是比较地址，重写后比较内容", "hashCode 决定落在哪个桶，equals 决定桶内哪个元素", "两者不一致会导致对象放进 HashSet 后查不到"],
+      "followUps": ["如果两个对象 equals 为 true 但 hashCode 不同，放进 HashMap 会发生什么？"]
+    },
+    {
+      "id": "java-03",
+      "category": "Java基础",
+      "topic": "接口与抽象类",
+      "difficulty": 1,
+      "question": "接口和抽象类应该怎么选？",
+      "points": ["抽象类可以有状态和构造器，适合模板式复用", "接口侧重能力约定，一个类可以实现多个", "JDK 8 之后接口可以有 default / static 方法", "优先用接口，需要共享实现时再用抽象类"]
+    },
+    {
+      "id": "java-04",
+      "category": "Java基础",
+      "topic": "泛型擦除",
+      "difficulty": 2,
+      "question": "什么是泛型擦除？它带来哪些限制？",
+      "points": ["泛型只在编译期做检查，运行期被擦成 Object 或上界", "不能 new T[]、不能对泛型做 instanceof", "静态成员不能使用类的泛型参数", "通配符用 PECS 原则：生产者 extends、消费者 super"],
+      "followUps": ["为什么反射能拿到泛型信息？"]
+    },
+    {
+      "id": "java-05",
+      "category": "Java基础",
+      "topic": "异常体系",
+      "difficulty": 1,
+      "question": "Java 的异常体系是怎样的？受检异常和非受检异常怎么选？",
+      "points": ["Throwable 下分 Error 和 Exception", "RuntimeException 及其子类是非受检异常", "受检异常强制调用方处理，适合可恢复的外部故障", "业务校验失败一般用非受检异常 + 统一异常处理"],
+      "followUps": ["finally 里 return 会发生什么？"]
+    },
+    {
+      "id": "java-06",
+      "category": "Java基础",
+      "topic": "值传递",
+      "difficulty": 2,
+      "question": "Java 是值传递还是引用传递？",
+      "points": ["只有值传递：基本类型传值的副本", "对象传的是引用的副本，两个引用指向同一对象", "所以在方法里改对象内容会影响外部，重新赋值引用的指向不会"],
+      "followUps": ["在方法里把参数重新 new 一个对象，外部能看到吗？"]
+    },
+    {
+      "id": "java-07",
+      "category": "Java基础",
+      "topic": "反射",
+      "difficulty": 2,
+      "question": "反射是什么？有哪些代价？",
+      "points": ["运行期获取类的结构并操作成员", "会跳过编译期检查，性能比直接调用差", "框架（Spring、MyBatis）大量依赖它做解耦", "可以配合 setAccessible 访问私有成员，但有安全风险"]
+    },
+    {
+      "id": "coll-01",
+      "category": "集合",
+      "topic": "HashMap 结构",
+      "difficulty": 1,
+      "question": "JDK 1.8 的 HashMap 底层结构是什么？",
+      "points": ["数组 + 链表 + 红黑树", "key 的 hash 扰动后与 (n-1) 做与运算定位下标", "链表长度达到阈值且数组容量足够时转红黑树", "默认容量 16，负载因子 0.75"]
+    },
+    {
+      "id": "coll-02",
+      "category": "集合",
+      "topic": "HashMap 扩容",
+      "difficulty": 2,
+      "question": "HashMap 的扩容机制是怎样的？为什么容量一定是 2 的幂？",
+      "points": ["元素数超过 容量 × 0.75 时扩容为原来的 2 倍", "1.8 用高低位拆分，元素要么留在原位要么移动 oldCap", "2 的幂可以让 (n-1) & hash 等价于取模且更快", "扩容需要重新分布，是主要性能开销"],
+      "followUps": ["如果初始化时传入 17，实际容量是多少？"]
+    },
+    {
+      "id": "coll-03",
+      "category": "集合",
+      "topic": "红黑树转换",
+      "difficulty": 2,
+      "question": "链表什么时候转红黑树？为什么阈值是 8？",
+      "points": ["链表长度 ≥ 8 且数组容量 ≥ 64 时转树", "容量不足 64 时优先扩容而不是转树", "元素减少到 6 时退化为链表，留出缓冲避免频繁转换", "阈值 8 基于哈希冲突的泊松分布，属于工程折中"]
+    },
+    {
+      "id": "coll-04",
+      "category": "集合",
+      "topic": "HashMap 线程安全",
+      "difficulty": 2,
+      "question": "HashMap 为什么线程不安全？",
+      "points": ["1.7 扩容时头插法可能形成环形链表，导致死循环", "1.8 改为尾插解决了成环，但并发 put 仍可能互相覆盖", "并发场景应使用 ConcurrentHashMap"],
+      "followUps": ["Collections.synchronizedMap 和 ConcurrentHashMap 有什么区别？"]
+    },
+    {
+      "id": "coll-05",
+      "category": "集合",
+      "topic": "ConcurrentHashMap",
+      "difficulty": 3,
+      "question": "JDK 1.8 的 ConcurrentHashMap 是怎么保证线程安全的？",
+      "points": ["1.7 用 Segment 分段锁，1.8 改为 CAS + synchronized 锁单个桶的头节点", "锁粒度从段降到桶，并发度更高", "size 用 baseCount + CounterCell 分散计数", "扩容支持多线程协助迁移"]
+    },
+    {
+      "id": "coll-06",
+      "category": "集合",
+      "topic": "ArrayList 扩容",
+      "difficulty": 1,
+      "question": "ArrayList 的扩容规则？和 LinkedList 怎么选？",
+      "points": ["默认容量 10，扩容为原来的 1.5 倍", "底层是连续数组，随机访问 O(1)", "LinkedList 插入删除快但内存开销大、缓存不友好", "绝大多数场景用 ArrayList"]
+    },
+    {
+      "id": "coll-07",
+      "category": "集合",
+      "topic": "fail-fast",
+      "difficulty": 2,
+      "question": "什么是 fail-fast？怎么安全地在遍历中删除元素？",
+      "points": ["集合内部维护 modCount，迭代时发现被改动就抛 ConcurrentModificationException", "应使用 Iterator.remove 或 removeIf", "并发场景可用 CopyOnWriteArrayList 或并发容器"]
+    },
+    {
+      "id": "conc-01",
+      "category": "并发",
+      "topic": "线程池参数",
+      "difficulty": 1,
+      "question": "线程池的核心参数有哪些？",
+      "points": ["corePoolSize、maximumPoolSize、keepAliveTime、unit", "workQueue、threadFactory、handler", "线程数达到核心数后先进队列，队列满才扩到最大线程数", "都满了才触发拒绝策略"]
+    },
+    {
+      "id": "conc-02",
+      "category": "并发",
+      "topic": "线程池执行流程",
+      "difficulty": 2,
+      "question": "任务提交到线程池后的完整流程？",
+      "points": ["线程数 < 核心数：直接新建线程执行", "否则入队等待", "队列满且线程数 < 最大数：新建非核心线程", "仍然满：执行拒绝策略"],
+      "followUps": ["为什么建议用有界队列？"]
+    },
+    {
+      "id": "conc-03",
+      "category": "并发",
+      "topic": "拒绝策略",
+      "difficulty": 2,
+      "question": "线程池的四种拒绝策略分别是什么？",
+      "points": ["AbortPolicy：抛异常，默认策略", "CallerRunsPolicy：由提交任务的线程执行，起到反压作用", "DiscardPolicy：静默丢弃", "DiscardOldestPolicy：丢掉队列里最老的任务"],
+      "followUps": ["你们项目里用的是哪种？为什么？"]
+    },
+    {
+      "id": "conc-04",
+      "category": "并发",
+      "topic": "线程数设置",
+      "difficulty": 2,
+      "question": "线程池的核心线程数应该怎么设？",
+      "points": ["CPU 密集型约 N+1，IO 密集型约 2N 起步", "还要看下游承受能力和任务耗时", "线上更可靠的做法是压测后再定，并配合监控动态调整"],
+      "followUps": ["如果任务里要调外部接口，耗时很长，线程数怎么估？"]
+    },
+    {
+      "id": "conc-05",
+      "category": "并发",
+      "topic": "synchronized 原理",
+      "difficulty": 3,
+      "question": "synchronized 的实现原理是什么？锁升级过程是怎样的？",
+      "points": ["依赖对象头的 Mark Word 记录锁状态", "升级路径：无锁 → 偏向锁 → 轻量级锁（CAS 自旋）→ 重量级锁（monitor）", "JDK 15 之后偏向锁已默认禁用", "锁只能升级不能降级"]
+    },
+    {
+      "id": "conc-06",
+      "category": "并发",
+      "topic": "synchronized 与 Lock",
+      "difficulty": 2,
+      "question": "synchronized 和 ReentrantLock 有什么区别？",
+      "points": ["synchronized 是 JVM 关键字，自动释放", "ReentrantLock 支持可中断、超时、公平锁、多个条件变量", "ReentrantLock 必须手动 unlock，通常放在 finally", "简单场景用 synchronized，需要灵活控制时用 Lock"]
+    },
+    {
+      "id": "conc-07",
+      "category": "并发",
+      "topic": "volatile",
+      "difficulty": 2,
+      "question": "volatile 能保证什么？不能保证什么？",
+      "points": ["保证可见性和有序性（插入内存屏障）", "不保证原子性，i++ 仍然有竞态", "适合做状态标志或双重检查锁定的引用字段", "复合操作要用锁或原子类"]
+    },
+    {
+      "id": "conc-08",
+      "category": "并发",
+      "topic": "AQS",
+      "difficulty": 3,
+      "question": "AQS 的核心思想是什么？",
+      "points": ["用一个 volatile int state 表示同步状态", "CLH 变体的双向队列存放等待线程", "子类只需实现 tryAcquire / tryRelease", "支持独占和共享两种模式，ReentrantLock、CountDownLatch 都基于它"]
+    },
+    {
+      "id": "conc-09",
+      "category": "并发",
+      "topic": "ThreadLocal",
+      "difficulty": 2,
+      "question": "ThreadLocal 会内存泄漏吗？为什么？",
+      "points": ["数据存在 Thread 的 ThreadLocalMap 里", "key 是弱引用，value 是强引用", "线程池里线程长期存活，value 无法回收", "用完必须 remove"]
+    },
+    {
+      "id": "conc-10",
+      "category": "并发",
+      "topic": "死锁",
+      "difficulty": 2,
+      "question": "死锁的四个必要条件是什么？线上怎么排查？",
+      "points": ["互斥、请求并保持、不可剥夺、循环等待", "破坏任一条件即可避免，常用按固定顺序加锁", "jstack 会直接标出 deadlock 并给出线程栈", "也可以看 arthas 的 thread -b"]
+    },
+    {
+      "id": "jvm-01",
+      "category": "JVM",
+      "topic": "运行时内存",
+      "difficulty": 1,
+      "question": "JVM 的运行时内存区域怎么划分？",
+      "points": ["线程私有：虚拟机栈、本地方法栈、程序计数器", "线程共享：堆、方法区（1.8 起为元空间）", "堆是 GC 主战场，方法区存类元信息", "直接内存不在 JVM 规范里但很关键"]
+    },
+    {
+      "id": "jvm-02",
+      "category": "JVM",
+      "topic": "对象分配",
+      "difficulty": 2,
+      "question": "新建一个对象，内存是怎么分配的？",
+      "points": ["优先在 TLAB 中分配，避免多线程竞争", "大对象直接进老年代", "逃逸分析后可能栈上分配或标量替换", "长期存活的对象晋升老年代"]
+    },
+    {
+      "id": "jvm-03",
+      "category": "JVM",
+      "topic": "GC 算法",
+      "difficulty": 2,
+      "question": "常见的垃圾回收算法有哪些？",
+      "points": ["标记-清除：有碎片", "复制算法：无碎片但浪费空间，适合新生代", "标记-整理：无碎片但移动成本高", "分代收集：按对象存活特点选择算法"]
+    },
+    {
+      "id": "jvm-04",
+      "category": "JVM",
+      "topic": "垃圾收集器",
+      "difficulty": 3,
+      "question": "你了解哪些垃圾收集器？G1 有什么特点？",
+      "points": ["Serial / Parallel 面向吞吐", "CMS 面向低停顿，用标记清除会产生碎片", "G1 把堆分成 Region，可预测停顿模型，整体是标记整理", "ZGC 用染色指针，停顿在毫秒级"]
+    },
+    {
+      "id": "jvm-05",
+      "category": "JVM",
+      "topic": "类加载",
+      "difficulty": 2,
+      "question": "类加载的过程分为哪几步？",
+      "points": ["加载、验证、准备、解析、初始化", "准备阶段给静态变量分配内存并赋零值", "初始化阶段才执行静态代码块和赋值", "解析可以把符号引用替换为直接引用"]
+    },
+    {
+      "id": "jvm-06",
+      "category": "JVM",
+      "topic": "双亲委派",
+      "difficulty": 2,
+      "question": "什么是双亲委派？它有什么用？",
+      "points": ["加载类时先交给父加载器，父加载器加载不了才自己加载", "保证核心类库不被篡改、避免类重复加载", "SPI、Tomcat 的 WebappClassLoader 都会打破它"],
+      "followUps": ["JDBC 驱动为什么能打破双亲委派？"]
+    },
+    {
+      "id": "jvm-07",
+      "category": "JVM",
+      "topic": "OOM 排查",
+      "difficulty": 3,
+      "question": "线上发生 OOM，你会怎么排查？",
+      "points": ["先看日志确认是堆 OOM、元空间还是直接内存", "jps 找进程，jmap 导出堆快照，jstack 看线程栈", "用 MAT 找支配树和大对象", "必要时用 arthas 在线看对象分布"],
+      "followUps": ["堆快照很大，线上导出要注意什么？"]
+    },
+    {
+      "id": "jvm-08",
+      "category": "JVM",
+      "topic": "引用类型",
+      "difficulty": 2,
+      "question": "强、软、弱、虚引用分别有什么用？",
+      "points": ["强引用：不回收", "软引用：内存不足时回收，适合做缓存", "弱引用：下次 GC 必回收，ThreadLocal 的 key 用它", "虚引用：配合引用队列做回收通知"]
+    },
+    {
+      "id": "spring-01",
+      "category": "Spring",
+      "topic": "IoC",
+      "difficulty": 1,
+      "question": "什么是 IoC？它解决了什么问题？",
+      "points": ["对象的创建和依赖装配交给容器", "降低耦合，便于替换实现和测试", "依赖注入是 IoC 的一种实现方式", "Spring 通过 BeanDefinition 描述并管理 Bean"]
+    },
+    {
+      "id": "spring-02",
+      "category": "Spring",
+      "topic": "AOP",
+      "difficulty": 2,
+      "question": "Spring AOP 的底层是怎么实现的？",
+      "points": ["运行期动态代理：接口用 JDK Proxy，类用 CGLIB", "Spring Boot 2.x 起默认使用 CGLIB", "切面在方法调用前后织入增强逻辑", "内部方法自调用不会走代理"]
+    },
+    {
+      "id": "spring-03",
+      "category": "Spring",
+      "topic": "Bean 生命周期",
+      "difficulty": 2,
+      "question": "Spring Bean 的生命周期是怎样的？",
+      "points": ["实例化 → 属性填充 → Aware 回调", "BeanPostProcessor 的前置处理", "初始化方法（@PostConstruct、afterPropertiesSet、init-method）", "使用 → 销毁（@PreDestroy）"]
+    },
+    {
+      "id": "spring-04",
+      "category": "Spring",
+      "topic": "循环依赖",
+      "difficulty": 3,
+      "question": "Spring 如何解决循环依赖？三级缓存分别存什么？",
+      "points": ["一级：成品单例；二级：提前暴露的早期引用；三级：ObjectFactory", "通过提前暴露引用打破循环", "只能解决单例 + setter/字段注入", "构造器注入的循环依赖无法解决"]
+    },
+    {
+      "id": "spring-05",
+      "category": "Spring",
+      "topic": "@Transactional 失效",
+      "difficulty": 2,
+      "question": "@Transactional 在哪些情况下会失效？",
+      "points": ["同类内部方法自调用，没走代理", "方法不是 public", "异常被 catch 掉了或抛的是受检异常（默认不回滚）", "类没被 Spring 管理，或数据库引擎不支持事务"],
+      "followUps": ["怎么让自调用的方法也生效？"]
+    },
+    {
+      "id": "spring-06",
+      "category": "Spring",
+      "topic": "事务传播",
+      "difficulty": 2,
+      "question": "常用的几种事务传播行为有什么区别？",
+      "points": ["REQUIRED：有事务就加入，没有就新建，最常用", "REQUIRES_NEW：挂起当前事务，自己开新事务", "NESTED：用保存点实现嵌套，外层回滚会带上内层", "SUPPORTS / NOT_SUPPORTED 用于只读或不需要事务的场景"]
+    },
+    {
+      "id": "spring-07",
+      "category": "Spring",
+      "topic": "自动配置",
+      "difficulty": 2,
+      "question": "Spring Boot 自动配置的原理是什么？",
+      "points": ["@SpringBootApplication 里组合了 @EnableAutoConfiguration", "启动时读取 META-INF 下的自动配置类清单", "用 @Conditional 系列注解按条件装配", "可以在配置文件里排除某个自动配置类"]
+    },
+    {
+      "id": "spring-08",
+      "category": "Spring",
+      "topic": "请求流程",
+      "difficulty": 2,
+      "question": "一个 HTTP 请求在 Spring MVC 里是怎么走完的？",
+      "points": ["DispatcherServlet 接收请求", "HandlerMapping 找到处理器和拦截器链", "HandlerAdapter 调用方法并做参数绑定", "返回值经消息转换器写出，异常交给 HandlerExceptionResolver"]
+    },
+    {
+      "id": "mysql-01",
+      "category": "MySQL",
+      "topic": "B+ 树索引",
+      "difficulty": 2,
+      "question": "MySQL 为什么用 B+ 树做索引？",
+      "points": ["非叶子节点只存键，单页能放更多索引项，树更矮", "叶子节点用链表相连，适合范围查询", "相比 B 树，查询路径更稳定", "相比哈希，支持范围、排序和最左前缀"]
+    },
+    {
+      "id": "mysql-02",
+      "category": "MySQL",
+      "topic": "聚簇索引",
+      "difficulty": 2,
+      "question": "聚簇索引和二级索引有什么区别？什么是回表？",
+      "points": ["InnoDB 主键索引的叶子节点存整行数据", "二级索引叶子节点存主键值", "通过二级索引查非索引列要再查一次主键索引，即回表", "覆盖索引可以避免回表"]
+    },
+    {
+      "id": "mysql-03",
+      "category": "MySQL",
+      "topic": "最左前缀",
+      "difficulty": 2,
+      "question": "联合索引的最左前缀原则是什么？",
+      "points": ["查询条件必须从索引最左列开始连续匹配", "范围查询会让后面的列用不上索引", "order by 也可以利用索引避免排序", "索引列顺序要按区分度和查询习惯设计"]
+    },
+    {
+      "id": "mysql-04",
+      "category": "MySQL",
+      "topic": "索引失效",
+      "difficulty": 2,
+      "question": "哪些情况会导致索引失效？",
+      "points": ["对索引列做函数运算或隐式类型转换", "like 以 % 开头", "or 连接的列没有索引", "违反最左前缀，或优化器判断全表扫描更便宜"],
+      "followUps": ["字符串字段传数字为什么不走索引？"]
+    },
+    {
+      "id": "mysql-05",
+      "category": "MySQL",
+      "topic": "事务隔离级别",
+      "difficulty": 2,
+      "question": "四种隔离级别分别解决了什么问题？",
+      "points": ["读未提交：脏读", "读已提交：解决脏读，仍有不可重复读", "可重复读：MySQL 默认，解决不可重复读", "串行化：全部解决但并发差"]
+    },
+    {
+      "id": "mysql-06",
+      "category": "MySQL",
+      "topic": "MVCC",
+      "difficulty": 3,
+      "question": "MVCC 是怎么实现的？",
+      "points": ["每行有隐藏的事务 id 和回滚指针", "undo log 串成版本链", "Read View 决定当前事务能看到哪个版本", "读已提交每条语句生成新视图，可重复读只在事务开始时生成"]
+    },
+    {
+      "id": "mysql-07",
+      "category": "MySQL",
+      "topic": "幻读与间隙锁",
+      "difficulty": 3,
+      "question": "可重复读级别下，MySQL 怎么解决幻读？",
+      "points": ["快照读靠 MVCC 返回历史版本", "当前读靠 Next-Key Lock（记录锁 + 间隙锁）阻止插入", "间隙锁只在可重复读级别生效", "并不是所有场景都能完全避免，仍要注意加锁范围"]
+    },
+    {
+      "id": "mysql-08",
+      "category": "MySQL",
+      "topic": "explain",
+      "difficulty": 2,
+      "question": "explain 你主要看哪些字段？",
+      "points": ["type 看访问类型，至少要到 range", "key 看实际用了哪个索引", "rows 估算扫描行数", "Extra 里出现 filesort、temporary 要警惕"]
+    },
+    {
+      "id": "mysql-09",
+      "category": "MySQL",
+      "topic": "慢查询优化",
+      "difficulty": 3,
+      "question": "一条 SQL 很慢，你的排查和优化思路是什么？",
+      "points": ["先确认是偶发还是持续，看慢查询日志", "explain 看执行计划和扫描行数", "考虑加/改索引、避免回表、拆分大查询", "数据量太大时考虑分页优化、归档或分库分表"],
+      "followUps": ["limit 1000000, 10 为什么慢？怎么优化？"]
+    },
+    {
+      "id": "redis-01",
+      "category": "Redis",
+      "topic": "为什么快",
+      "difficulty": 2,
+      "question": "Redis 为什么快？单线程还快的原因是什么？",
+      "points": ["纯内存操作，避免磁盘 IO", "IO 多路复用处理连接", "单线程避免锁竞争和上下文切换", "数据结构针对场景做了优化（如跳表、压缩列表）"],
+      "followUps": ["Redis 6.0 为什么引入多线程？"]
+    },
+    {
+      "id": "redis-02",
+      "category": "Redis",
+      "topic": "数据类型",
+      "difficulty": 1,
+      "question": "Redis 有哪些常用数据类型？分别适合什么场景？",
+      "points": ["String：缓存、计数器、分布式锁", "Hash：对象字段的部分更新", "List：简单队列、时间线", "Set / ZSet：去重、排行榜、延时队列"]
+    },
+    {
+      "id": "redis-03",
+      "category": "Redis",
+      "topic": "持久化",
+      "difficulty": 2,
+      "question": "RDB 和 AOF 有什么区别？该怎么选？",
+      "points": ["RDB 是快照，恢复快但可能丢更多数据", "AOF 记录写命令，更安全但文件大、恢复慢", "AOF 有 always / everysec / no 三种刷盘策略", "Redis 4.0 起支持混合持久化，兼顾两者"]
+    },
+    {
+      "id": "redis-04",
+      "category": "Redis",
+      "topic": "过期与淘汰",
+      "difficulty": 2,
+      "question": "Redis 的过期删除策略和内存淘汰策略分别是什么？",
+      "points": ["过期删除：惰性删除 + 定期抽样删除", "淘汰策略：noeviction、allkeys-lru、volatile-lru、allkeys-lfu 等", "Redis 默认是不淘汰、写满报错", "缓存场景一般选 allkeys-lru 或 lfu"]
+    },
+    {
+      "id": "redis-05",
+      "category": "Redis",
+      "topic": "缓存三大问题",
+      "difficulty": 2,
+      "question": "缓存穿透、击穿、雪崩分别是什么？怎么解决？",
+      "points": ["穿透：查不存在的数据，用布隆过滤器或缓存空值", "击穿：热点 key 过期，用互斥锁重建或逻辑过期", "雪崩：大量 key 同时过期或 Redis 宕机，用随机过期时间、多级缓存、限流降级"],
+      "followUps": ["布隆过滤器为什么会有误判？"]
+    },
+    {
+      "id": "redis-06",
+      "category": "Redis",
+      "topic": "缓存一致性",
+      "difficulty": 3,
+      "question": "怎么保证缓存和数据库的一致性？",
+      "points": ["常用旁路缓存：先更新库再删缓存", "延迟双删应对主从延迟和并发读回填", "强一致场景只能加锁或不用缓存", "最终一致要配过期时间和补偿"],
+      "followUps": ["为什么是删除缓存而不是更新缓存？"]
+    },
+    {
+      "id": "redis-07",
+      "category": "Redis",
+      "topic": "分布式锁",
+      "difficulty": 3,
+      "question": "用 Redis 怎么做分布式锁？需要注意什么？",
+      "points": ["SET key value NX PX 保证原子加锁和过期", "value 要唯一，释放时用 Lua 校验后删除", "业务没执行完锁过期，用 Redisson 看门狗续期", "主从切换可能丢锁，RedLock 有争议且实现复杂"]
+    },
+    {
+      "id": "redis-08",
+      "category": "Redis",
+      "topic": "大 key",
+      "difficulty": 2,
+      "question": "什么是大 key？会带来什么问题？",
+      "points": ["单个 key 的 value 过大或集合元素过多", "删除和读取会阻塞主线程", "网络传输和内存分布不均", "拆分、压缩、异步删除（unlink）"]
+    },
+    {
+      "id": "mq-01",
+      "category": "消息队列",
+      "topic": "消息可靠性",
+      "difficulty": 2,
+      "question": "RabbitMQ 怎么保证消息不丢？",
+      "points": ["生产者开启 confirm 确认", "交换机、队列、消息都持久化", "消费者手动 ack，处理成功再确认", "配合死信队列兜底失败消息"],
+      "followUps": ["手动 ack 模式下重复消费怎么处理？"]
+    },
+    {
+      "id": "mq-02",
+      "category": "消息队列",
+      "topic": "幂等",
+      "difficulty": 3,
+      "question": "消息重复消费怎么保证幂等？",
+      "points": ["用业务唯一键做唯一索引", "先查后写要配合状态机或版本号", "用 Redis 记录已处理的消息 id", "幂等设计要放在业务层，而不是只靠 MQ"]
+    },
+    {
+      "id": "mq-03",
+      "category": "消息队列",
+      "topic": "死信队列",
+      "difficulty": 2,
+      "question": "死信队列有什么用？什么情况下消息会进死信？",
+      "points": ["集中处理消费失败或过期的消息", "被拒绝且不重回队列、TTL 过期、队列满", "便于人工补偿和问题定位", "要配合监控和告警"]
+    },
+    {
+      "id": "mq-04",
+      "category": "消息队列",
+      "topic": "异步解耦",
+      "difficulty": 2,
+      "question": "什么场景适合用消息队列？引入后有什么代价？",
+      "points": ["削峰、解耦、异步", "代价是最终一致、重复消费、消息堆积", "事务消息或本地消息表解决一致性", "要有死信、重试和监控"]
+    },
+    {
+      "id": "sys-01",
+      "category": "系统设计",
+      "topic": "限流",
+      "difficulty": 2,
+      "question": "常见的限流算法有哪些？",
+      "points": ["固定窗口计数器：简单但有临界问题", "滑动窗口：更平滑，常用 Redis ZSet 实现", "漏桶：恒定速率流出，适合保护下游", "令牌桶：允许一定突发"]
+    },
+    {
+      "id": "sys-02",
+      "category": "系统设计",
+      "topic": "幂等设计",
+      "difficulty": 2,
+      "question": "接口怎么设计幂等？",
+      "points": ["客户端生成唯一请求号，服务端做去重", "数据库唯一索引兜底", "状态机限制非法状态流转", "去重记录设置合理过期时间"]
+    }
+  ]
+}

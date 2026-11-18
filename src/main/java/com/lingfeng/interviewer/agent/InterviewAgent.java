@@ -2,6 +2,7 @@ package com.lingfeng.interviewer.agent;
 
 import com.lingfeng.interviewer.common.RedisKeyConstants;
 import com.lingfeng.interviewer.dto.AgentReplyVO;
+import com.lingfeng.interviewer.questionbank.QuestionBankService;
 import com.lingfeng.interviewer.service.RagService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -43,6 +44,9 @@ public class InterviewAgent {
     private RagService ragService;
 
     @Autowired
+    private QuestionBankService questionBankService;
+
+    @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
     /** 一次生成的结果：文本 + 给前端的执行摘要 */
@@ -60,7 +64,8 @@ public class InterviewAgent {
 
         AgentTraceRecorder trace = new AgentTraceRecorder(MAX_TOOL_CALLS, TOOL_BUDGET_MS);
         AgentContext agentContext = new AgentContext(ctx);
-        InterviewTools tools = new InterviewTools(agentContext, ragService, stringRedisTemplate, trace);
+        InterviewTools tools = new InterviewTools(
+                agentContext, ragService, questionBankService, stringRedisTemplate, trace);
 
         String memoDigest = readMemoDigest(ctx.sessionId());
         String text;

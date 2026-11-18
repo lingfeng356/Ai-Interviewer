@@ -1,6 +1,8 @@
 package com.lingfeng.interviewer.agent;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingfeng.interviewer.common.InterviewStage;
+import com.lingfeng.interviewer.questionbank.QuestionBankService;
 import com.lingfeng.interviewer.service.RagService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -88,7 +90,7 @@ class AgentCoreTest {
         AgentTraceRecorder trace = new AgentTraceRecorder(5, 60_000);
         ReplyContext ctx = contextWithResume("实习期间用 Redis 做过商品缓存，QPS 从 800 提到 5000。",
                 trace);
-        InterviewTools tools = new InterviewTools(new AgentContext(ctx), new NoopRag(), null, trace);
+        InterviewTools tools = new InterviewTools(new AgentContext(ctx), new NoopRag(), bank(), null, trace);
 
         String result = tools.searchResume("Redis");
 
@@ -103,7 +105,7 @@ class AgentCoreTest {
     void searchResumeMiss() {
         AgentTraceRecorder trace = new AgentTraceRecorder(5, 60_000);
         ReplyContext ctx = contextWithResume("熟悉 Java 与 Spring Boot。", trace);
-        InterviewTools tools = new InterviewTools(new AgentContext(ctx), new NoopRag(), null, trace);
+        InterviewTools tools = new InterviewTools(new AgentContext(ctx), new NoopRag(), bank(), null, trace);
 
         String result = tools.searchResume("Kafka");
 
@@ -116,14 +118,58 @@ class AgentCoreTest {
     void searchResumeBlockedWhenBudgetExhausted() {
         AgentTraceRecorder trace = new AgentTraceRecorder(0, 60_000); // 一次都不许调
         ReplyContext ctx = contextWithResume("Redis 缓存。", trace);
-        InterviewTools tools = new InterviewTools(new AgentContext(ctx), new NoopRag(), null, trace);
+        InterviewTools tools = new InterviewTools(new AgentContext(ctx), new NoopRag(), bank(), null, trace);
 
         String result = tools.searchResume("Redis");
 
         assertTrue(result.contains("工具调用次数或时间已达上限"));
     }
 
+    /* ==================== 4. 题库工具 ==================== */
+
+    @Test
+    @DisplayName("题库能按知识点命中，并返回答题要点")
+    void questionBankHit() {
+        AgentTraceRecorder trace = new AgentTraceRecorder(5, 60_000);
+        ReplyContext ctx = contextWithResume("简历", trace);
+        InterviewTools tools = new InterviewTools(new AgentContext(ctx), new NoopRag(), bank(), null, trace);
+
+        String result = tools.searchQuestionBank("HashMap", "2");
+
+        assertTrue(result.contains("题库命中"));
+        assertTrue(result.contains("HashMap"));
+        assertTrue(result.contains("答题要点"));
+        assertEquals(1, trace.count());
+    }
+
+    @Test
+    @DisplayName("题库未命中时给出可用分类，而不是抛异常")
+    void questionBankMiss() {
+        AgentTraceRecorder trace = new AgentTraceRecorder(5, 60_000);
+        ReplyContext ctx = contextWithResume("简历", trace);
+        InterviewTools tools = new InterviewTools(new AgentContext(ctx), new NoopRag(), bank(), null, trace);
+
+        String result = tools.searchQuestionBank("量子计算", "1");
+
+        assertTrue(result.contains("没有命中"));
+        assertTrue(result.contains("可用分类"));
+    }
+
+    @Test
+    @DisplayName("题库文件能正常加载，且包含足够的题目")
+    void questionBankLoads() {
+        assertTrue(bank().size() >= 50, "题库应至少有 50 道题");
+        assertTrue(bank().categories().contains("Redis"));
+    }
+
     /* ==================== 辅助 ==================== */
+
+    /** 加载真实的题库资源文件（不走 Spring） */
+    private QuestionBankService bank() {
+        QuestionBankService service = new QuestionBankService(new ObjectMapper());
+        service.load();
+        return service;
+    }
 
     private ReplyContext contextWithResume(String resumeText, AgentTraceRecorder trace) {
         return new ReplyContext(

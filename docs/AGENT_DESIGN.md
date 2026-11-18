@@ -15,6 +15,8 @@
 > | `016` | **后端 Agent 核心**：`agent` 包（InterviewAgent / AgentPromptBuilder / InterviewTools / AgentTraceRecorder）、3 个工具、工具预算、失败降级、8 个单元测试 |
 > | `017` | 前端并入 `web/` 子目录；新增 `AgentTracePanel` 轨迹面板与 Agent/经典 模式开关 |
 > | `018` | 面试笔记接入评分消费者，形成“面试中记录 → 评分时引用”的记忆闭环 |
+> | `019` | 补充 README 与本文档 |
+> | `020` | **新增题库工具**：`question-bank/java-backend.json`（63 道，9 个分类）+ `QuestionBankService` + `searchQuestionBank` 工具 |
 >
 > 已验证：后端编译通过、`AgentCoreTest` 8/8 通过、前端 `npm run build` 通过。
 > **尚未验证**：完整端到端运行（本机 Redis / RabbitMQ / pgvector 未启动，Agent 的真实工具调用尚未跑过）。

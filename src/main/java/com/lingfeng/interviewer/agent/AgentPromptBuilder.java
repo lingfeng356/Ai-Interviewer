@@ -49,9 +49,11 @@ public final class AgentPromptBuilder {
         sb.append("\n\n【你可以使用的工具】")
                 .append("\n1. searchResume(keyword)：在候选人简历里按关键词查原文。想核实“他到底做没做过”时用。")
                 .append("\n2. searchKnowledge(question)：查技术知识库的标准答案要点。想判断他答得对不对时用。")
-                .append("\n3. saveMemo(type, note)：记下对他的观察（STRENGTH / WEAKNESS / DOUBT），评分时会用到。")
+                .append("\n3. searchQuestionBank(topic, difficulty)：从题库取该知识点的经典题和答题要点。想考察标准考点、或确认自己追问有没有覆盖关键点时用。")
+                .append("\n4. saveMemo(type, note)：记下对他的观察（STRENGTH / WEAKNESS / DOUBT），评分时会用到。")
                 .append("\n使用原则：只在你确实需要信息时才调用；不要为了显得认真而每轮都查；")
-                .append("简历里没写的东西不要编；查到的内容要落到你接下来问的问题上。")
+                .append("简历里没写的东西不要编；查到的内容要落到你接下来问的问题上；")
+                .append("题库是参考，不是必须照念——如果候选人正在聊一个具体项目，优先顺着他的回答追问。")
                 .append("\n本轮最多还能调用 ").append(Math.max(remainingTools, 0))
                 .append(" 次工具，超出的调用会被系统拦截。");
 
