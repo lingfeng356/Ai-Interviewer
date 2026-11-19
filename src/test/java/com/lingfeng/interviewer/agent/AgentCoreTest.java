@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -40,7 +39,7 @@ class AgentCoreTest {
     @Test
     @DisplayName("Agent prompt 带上三个工具与剩余额度")
     void agentPromptMentionsToolsAndBudget() {
-        String prompt = AgentPromptBuilder.agent(InterviewStage.TECH, 6, 6, "· [疑点] 没说清索引失效", 3);
+        String prompt = AgentPromptBuilder.agent(InterviewStage.TECH, 6, "· [疑点] 没说清索引失效", 3);
 
         assertTrue(prompt.contains("searchResume"));
         assertTrue(prompt.contains("searchKnowledge"));
@@ -53,7 +52,7 @@ class AgentCoreTest {
     @Test
     @DisplayName("没有笔记时不应出现空笔记区块")
     void agentPromptWithoutMemo() {
-        String prompt = AgentPromptBuilder.agent(InterviewStage.REVERSE, 12, 12, "", 5);
+        String prompt = AgentPromptBuilder.agent(InterviewStage.REVERSE, 12, "", 5);
         assertFalse(prompt.contains("你自己的面试笔记"));
     }
 
@@ -163,47 +162,6 @@ class AgentCoreTest {
         assertTrue(bank().categories().contains("Redis"));
     }
 
-    /* ==================== 5. 换环节审批 ==================== */
-
-    @Test
-    @DisplayName("换环节：本环节不足 2 题时拒绝，并告诉模型还差几题")
-    void stageAdvanceRejectedWhenTooEarly() {
-        StageAdvancePolicy.Decision d = StageAdvancePolicy.decide(InterviewStage.PROJECT, 1);
-
-        assertFalse(d.approved());
-        assertNull(d.next());
-        assertTrue(d.message().contains("REJECTED"));
-        assertTrue(d.message().contains("再问 1 题"));
-    }
-
-    @Test
-    @DisplayName("换环节：问满 2 题后批准，只能进入下一个环节，且下一轮生效")
-    void stageAdvanceApprovedInOrder() {
-        StageAdvancePolicy.Decision d = StageAdvancePolicy.decide(InterviewStage.SELF_INTRO, 2);
-
-        assertTrue(d.approved());
-        assertEquals(InterviewStage.PROJECT, d.next());
-        assertTrue(d.message().contains("下一轮开始生效"), "必须告诉模型下一轮才生效");
-    }
-
-    @Test
-    @DisplayName("换环节：反问是最后环节，拒绝")
-    void stageAdvanceRejectedAtLastStage() {
-        StageAdvancePolicy.Decision d = StageAdvancePolicy.decide(InterviewStage.REVERSE, 5);
-
-        assertFalse(d.approved());
-        assertTrue(d.message().contains("最后一个环节"));
-    }
-
-    @Test
-    @DisplayName("Agent prompt 告知模型可以申请换环节，并给出本环节进度")
-    void agentPromptMentionsStageAdvance() {
-        String prompt = AgentPromptBuilder.agent(InterviewStage.PROJECT, 3, 2, "", 5);
-
-        assertTrue(prompt.contains("requestNextStage"));
-        assertTrue(prompt.contains("本环节已问 1 题"));
-    }
-
     /* ==================== 辅助 ==================== */
 
     /** 加载真实的题库资源文件（不走 Spring） */
@@ -220,7 +178,6 @@ class AgentCoreTest {
                 "deepseek",
                 java.util.List.of(),
                 InterviewStage.PROJECT,
-                2,
                 3,
                 1L,
                 resumeText,

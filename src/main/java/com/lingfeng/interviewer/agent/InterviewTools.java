@@ -194,54 +194,6 @@ public class InterviewTools {
     }
 
     /**
-     * 换环节申请：模型提，系统批。
-     *
-     * 什么时候会批：本环节问满 {@link StageAdvancePolicy#MIN_QUESTIONS_IN_STAGE} 题，
-     * 且当前不是最后一个环节。
-     * 批准后写入 Redis 覆盖值，**下一轮**才生效 —— 本轮如果立刻换，
-     * system prompt 里那句“你现在的环节是 X”就和实际对不上了，模型容易自相矛盾。
-     */
-    @Tool(description = """
-            申请提前进入下一个面试环节。
-            当你判断当前环节已经问够了（比如项目细节已经问透、候选人已经答不出新东西），再调用。
-            是否批准由系统决定：本环节至少问满 2 题才可能通过；被拒绝就继续当前环节，不要连续申请。
-            """)
-    public String requestNextStage(
-            @ToolParam(description = "一句话说明理由，如：项目细节已经问透") String reason) {
-
-        long start = System.currentTimeMillis();
-        if (trace.exhausted()) {
-            return stopMessage("requestNextStage");
-        }
-
-        String why = reason == null ? "" : reason.replaceAll("\\s+", " ").trim();
-        if (why.length() > 80) {
-            why = why.substring(0, 80);
-        }
-
-        StageAdvancePolicy.Decision decision =
-                StageAdvancePolicy.decide(ctx.stage(), ctx.questionsInStage());
-
-        if (!decision.approved()) {
-            record("requestNextStage", why, decision.message(), start, false);
-            return decision.message();
-        }
-
-        try {
-            // 存 “环节|进入轮次”：下一轮 resolveStage 会读到它，并判断是否比默认节奏更靠后
-            String value = decision.next().name() + "|" + ctx.answeredRounds();
-            stringRedisTemplate.opsForValue().set(
-                    RedisKeyConstants.interviewStage(ctx.sessionId()), value, 7, TimeUnit.DAYS);
-            record("requestNextStage", why, decision.message(), start, true);
-            return decision.message();
-        } catch (Exception e) {
-            log.warn("写入面试环节覆盖值失败, sessionId={}", ctx.sessionId(), e);
-            record("requestNextStage", why, "写入失败", start, false);
-            return "申请已通过，但保存环节状态失败，请继续当前环节提问。";
-        }
-    }
-
-    /**
      * 工作记忆：把对候选人的观察沉淀下来。
      * 这份笔记会在后续轮次注入 system prompt，并在最终评分时一起交给评估模型，
      * 解决“面试官每轮都重新认识候选人”的问题。

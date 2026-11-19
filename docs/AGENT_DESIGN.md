@@ -17,12 +17,11 @@
 > | `018` | 面试笔记接入评分消费者，形成“面试中记录 → 评分时引用”的记忆闭环 |
 > | `019` | 补充 README 与本文档 |
 > | `020` | **新增题库工具**：`question-bank/java-backend.json`（63 道，9 个分类）+ `QuestionBankService` + `searchQuestionBank` 工具 |
-> | `021` | **阶段推进改为申请制**：`requestNextStage` 工具 + `StageAdvancePolicy` 审批（本环节 ≥2 题），获批后下一轮生效；轮数节奏仍为兜底，覆盖值只能提前不能拖后 |
 >
 > 已验证：后端编译通过、`AgentCoreTest` 8/8 通过、前端 `npm run build` 通过。
 > **尚未验证**：完整端到端运行（本机 Redis / RabbitMQ / pgvector 未启动，Agent 的真实工具调用尚未跑过）。
 >
-> 未做：`endInterview` 审批、trace 落库、离线评测、反思步骤、Mock 回放。
+> 未做：`requestNextStage` / `endInterview` 审批护栏、trace 落库、离线评测、反思步骤、Mock 回放。
 
 ---
 

@@ -40,14 +40,4 @@ public class AgentContext {
     public InterviewStage stage() {
         return reply.stage();
     }
-
-    /** 进入当前环节时的轮次（提前换环节后会被改写） */
-    public int stageStartRound() {
-        return reply.stageStartRound();
-    }
-
-    /** 本环节到目前为止已经问了几题（不含接下来要问的这一题） */
-    public int questionsInStage() {
-        return Math.max(0, reply.answeredRounds() - reply.stageStartRound());
-    }
 }

@@ -30,15 +30,7 @@ public final class AgentPromptBuilder {
      * 经典模式：和改造前完全一致（固定轮次驱动）。
      */
     public static String classic(InterviewStage stage, int answeredRounds) {
-        return classic(stage, answeredRounds, stage.getFromRound());
-    }
-
-    /**
-     * 经典模式（带“进入本环节的轮次”）。
-     * Agent 模式可能提前换环节，此时 answeredRounds - stageStartRound 才是本环节的真实进度。
-     */
-    public static String classic(InterviewStage stage, int answeredRounds, int stageStartRound) {
-        return BASE_PROMPT + progressAndTask(stage, answeredRounds, stageStartRound) + hardRules(stage);
+        return BASE_PROMPT + progressAndTask(stage, answeredRounds) + hardRules(stage);
     }
 
     /**
@@ -47,11 +39,11 @@ public final class AgentPromptBuilder {
      * @param memoDigest     之前几轮记下的面试要点（可能为空）
      * @param remainingTools 本轮还剩多少次工具调用额度
      */
-    public static String agent(InterviewStage stage, int answeredRounds, int stageStartRound,
+    public static String agent(InterviewStage stage, int answeredRounds,
                                String memoDigest, int remainingTools) {
         StringBuilder sb = new StringBuilder();
         sb.append(BASE_PROMPT)
-                .append(progressAndTask(stage, answeredRounds, stageStartRound))
+                .append(progressAndTask(stage, answeredRounds))
                 .append(hardRules(stage));
 
         sb.append("\n\n【你可以使用的工具】")
@@ -59,8 +51,6 @@ public final class AgentPromptBuilder {
                 .append("\n2. searchKnowledge(question)：查技术知识库的标准答案要点。想判断他答得对不对时用。")
                 .append("\n3. searchQuestionBank(topic, difficulty)：从题库取该知识点的经典题和答题要点。想考察标准考点、或确认自己追问有没有覆盖关键点时用。")
                 .append("\n4. saveMemo(type, note)：记下对他的观察（STRENGTH / WEAKNESS / DOUBT），评分时会用到。")
-                .append("\n5. requestNextStage(reason)：当你判断本环节已经问够了，申请进入下一环节。")
-                .append("系统会审批：本环节至少问满 2 题才可能通过；被拒绝就继续当前环节，不要反复申请。")
                 .append("\n使用原则：只在你确实需要信息时才调用；不要为了显得认真而每轮都查；")
                 .append("简历里没写的东西不要编；查到的内容要落到你接下来问的问题上；")
                 .append("题库是参考，不是必须照念——如果候选人正在聊一个具体项目，优先顺着他的回答追问。")
@@ -86,19 +76,16 @@ public final class AgentPromptBuilder {
      * 为什么写得这么啰嗦：只丢一句"现在是项目环节"，AI 经常不买账 ——
      * 它会顺着对话历史里自己上一句话接着问，而不是切到新环节。
      */
-    private static String progressAndTask(InterviewStage stage, int answeredRounds, int stageStartRound) {
-        int roundInStage = answeredRounds - stageStartRound + 1;
+    private static String progressAndTask(InterviewStage stage, int answeredRounds) {
+        int roundInStage = answeredRounds - stage.getFromRound() + 1;
         int stageRounds = stage.getToRound() - stage.getFromRound();
-        int askedInStage = Math.max(0, answeredRounds - stageStartRound);
 
         StringBuilder sb = new StringBuilder();
         sb.append("\n\n【当前面试进度】")
                 .append("\n- 整场面试：这是你的第 ").append(answeredRounds + 1).append(" 次提问")
                 .append("\n- 当前环节：【").append(stage.getLabel()).append("】")
                 .append("\n- 该环节进度：第 ").append(roundInStage)
-                .append(" 题 / 共约 ").append(stageRounds).append(" 题")
-                .append("\n- 本环节已问 ").append(askedInStage)
-                .append(" 题（申请换环节至少需要 2 题）");
+                .append(" 题 / 共约 ").append(stageRounds).append(" 题");
 
         if (roundInStage == 1 && answeredRounds > 0) {
             sb.append("\n- 注意：你刚刚从上一个环节切换到【").append(stage.getLabel())

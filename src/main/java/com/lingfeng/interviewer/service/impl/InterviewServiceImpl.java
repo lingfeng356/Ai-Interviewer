@@ -178,8 +178,7 @@ public class InterviewServiceImpl implements InterviewService {
             agentMeta = outcome.meta();
         } else {
             aiReply = chatClient.prompt()
-                    .system(AgentPromptBuilder.classic(
-                            ctx.stage(), ctx.answeredRounds(), ctx.stageStartRound()))
+                    .system(AgentPromptBuilder.classic(ctx.stage(), ctx.answeredRounds()))
                     .messages(ctx.messages())
                     .call()
                     .content();
@@ -331,50 +330,10 @@ public class InterviewServiceImpl implements InterviewService {
                 }
             }
         }
-        // 9. 解析当前环节：优先用「模型申请 + 系统批准」的提前推进结果，
-        //    没有就按轮数算（见 resolveStage 的注释）
-        StageState stageState = resolveStage(sessionId, answeredRounds);
+        InterviewStage stage = InterviewStage.of(answeredRounds);
 
-        return new ReplyContext(sessionId, redisKey, provider, messages,
-                stageState.stage(), stageState.startRound(), answeredRounds,
+        return new ReplyContext(sessionId, redisKey, provider, messages, stage, answeredRounds,
                 session.getResumeId(), resumeText, resumeProfile);
-    }
-
-    /** 当前环节 + 进入该环节的轮次 */
-    private record StageState(InterviewStage stage, int startRound) {
-    }
-
-    /**
-     * 解析本轮的面试环节。
-     *
-     * 规则：**自主只能是加速器，不能是刹车。**
-     * 1. 按轮数算出一个「默认环节」（这是兜底节奏，保证面试一定会走完）；
-     * 2. 如果 Redis 里存在模型申请获批的覆盖值，且它比默认环节更靠后，就用覆盖值；
-     * 3. 覆盖值落后于默认环节时忽略它 —— 否则模型只要批准过一次，
-     *    后续就再也不会自动推进，会永远停在某个环节。
-     *
-     * 这样模型可以提前换环节（比如项目聊得透，第 4 轮就进技术基础），
-     * 但绝不会因为不申请就把面试拖住。
-     */
-    private StageState resolveStage(String sessionId, int answeredRounds) {
-        InterviewStage computed = InterviewStage.of(answeredRounds);
-
-        String raw = stringRedisTemplate.opsForValue()
-                .get(RedisKeyConstants.interviewStage(sessionId));
-        if (raw != null && !raw.isBlank()) {
-            String[] parts = raw.split("\\|", 2);
-            try {
-                InterviewStage applied = InterviewStage.valueOf(parts[0]);
-                int start = parts.length > 1 ? Integer.parseInt(parts[1]) : applied.getFromRound();
-                if (applied.getFromRound() > computed.getFromRound()) {
-                    return new StageState(applied, start);
-                }
-            } catch (Exception e) {
-                // 覆盖值坏了就当作没有，不能让一条脏数据把面试卡死
-                log.warn("面试环节覆盖值非法，回退为按轮数计算, sessionId={}, raw={}", sessionId, raw, e);
-            }
-        }
-        return new StageState(computed, computed.getFromRound());
     }
 
     /**
