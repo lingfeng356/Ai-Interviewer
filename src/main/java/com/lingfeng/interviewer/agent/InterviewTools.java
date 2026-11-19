@@ -1,5 +1,6 @@
 package com.lingfeng.interviewer.agent;
 
+import com.lingfeng.interviewer.common.InterviewStage;
 import com.lingfeng.interviewer.common.RedisKeyConstants;
 import com.lingfeng.interviewer.questionbank.QuestionBankService;
 import com.lingfeng.interviewer.questionbank.QuestionItem;
@@ -32,6 +33,8 @@ public class InterviewTools {
     private static final int SNIPPET_LEN = 260;
     /** 单场面试的笔记条数上限 */
     private static final int MAX_MEMO = 10;
+    /** 一次历史检索最多返回几轮问答 */
+    private static final int MAX_HISTORY_HITS = 3;
 
     private final AgentContext ctx;
     private final RagService ragService;
@@ -194,6 +197,108 @@ public class InterviewTools {
     }
 
     /**
+     * 历史检索：解决"AI 面试官重复提问"。
+     *
+     * 模型只看到最近若干轮上下文，聊久了就忘了自己问过什么，
+     * 于是换个说法再问一遍——用户体感极差。把这个能力做成工具，
+     * 让它在"想问但不确定"的时候自己查一下。
+     */
+    @Tool(description = """
+            在已经聊过的对话里按关键词查“我问过什么、候选人怎么答的”。
+            当你想确认某个问题是不是已经问过、避免重复提问时调用。
+            查不到说明确实没问过，可以放心问。
+            """)
+    public String searchHistory(
+            @ToolParam(description = "关键词，如 缓存、索引、项目、并发") String keyword) {
+
+        long start = System.currentTimeMillis();
+        String kw = keyword == null ? "" : keyword.trim();
+
+        if (trace.exhausted()) {
+            return stopMessage("searchHistory");
+        }
+        if (kw.isEmpty()) {
+            record("searchHistory", kw, "关键词为空", start, false);
+            return "关键词不能为空，请换一个技术名词再试。";
+        }
+
+        try {
+            Long size = stringRedisTemplate.opsForList().size(ctx.redisKey());
+            int count = size == null ? 0 : size.intValue();
+            if (count == 0) {
+                record("searchHistory", kw, "历史为空", start, true);
+                return "还没有对话历史，这是第一轮提问。";
+            }
+
+            List<String> raw = stringRedisTemplate.opsForList()
+                    .range(ctx.redisKey(), 0, count - 1);
+            List<ChatHistoryMatcher.QaPair> hits =
+                    ChatHistoryMatcher.match(raw, kw, MAX_HISTORY_HITS);
+
+            if (hits.isEmpty()) {
+                String msg = "历史里没有问到过「" + kw + "」，可以放心问。";
+                record("searchHistory", kw, msg, start, true);
+                return msg;
+            }
+
+            StringBuilder sb = new StringBuilder("历史里命中 ").append(hits.size()).append(" 轮问答：\n");
+            for (ChatHistoryMatcher.QaPair pair : hits) {
+                sb.append("· 第 ").append(pair.questionNo()).append(" 问 面试官：")
+                        .append(AgentTraceRecorder.truncate(pair.question(), 80)).append('\n')
+                        .append("  候选人：")
+                        .append(AgentTraceRecorder.truncate(pair.answer(), 120)).append('\n');
+            }
+            sb.append("注意：这些角度已经问过，不要重复；要追问就换个更深的点。");
+
+            String result = sb.toString();
+            record("searchHistory", kw, result, start, true);
+            return result;
+        } catch (Exception e) {
+            // 查不到历史不影响面试，但要让模型知道别硬查
+            log.warn("查询对话历史失败, sessionId={}", ctx.sessionId(), e);
+            record("searchHistory", kw, "查询异常", start, false);
+            return "暂时查不到历史，请基于你看到的对话继续提问，并尽量避免重复。";
+        }
+    }
+
+    /**
+     * 进度查询：让模型知道自己还剩多少空间。
+     * 只读，不改变任何状态；调用会计入本轮工具预算，所以 prompt 里提示它别每轮都查。
+     */
+    @Tool(description = """
+            查看当前面试进度：在哪个环节、整场第几问、本环节还剩几题。
+            当你想判断是不是该收尾、或者想对候选人说“时间不多了”时调用；只读，不改状态。
+            """)
+    public String getInterviewProgress() {
+
+        long start = System.currentTimeMillis();
+        if (trace.exhausted()) {
+            return stopMessage("getInterviewProgress");
+        }
+
+        InterviewStage stage = ctx.stage();
+        int answered = ctx.answeredRounds();
+        int stageStart = stage.getFromRound();
+        int stageLength = stage.getToRound() - stageStart;
+        int asked = Math.max(0, answered - stageStart);
+        int remaining = Math.max(0, stageLength - asked);
+
+        StringBuilder sb = new StringBuilder()
+                .append("当前环节：").append(stage.getLabel())
+                .append("；这是整场第 ").append(answered + 1).append(" 问")
+                .append("；本环节已问 ").append(asked).append(" 题，约剩 ").append(remaining).append(" 题");
+        if (stage == InterviewStage.REVERSE) {
+            sb.append("；这是最后一个环节，问完就可以结束面试");
+        } else {
+            sb.append("；该环节结束后进入：").append(nextStageLabel(stage));
+        }
+
+        String result = sb.toString();
+        record("getInterviewProgress", "-", result, start, true);
+        return result;
+    }
+
+    /**
      * 工作记忆：把对候选人的观察沉淀下来。
      * 这份笔记会在后续轮次注入 system prompt，并在最终评分时一起交给评估模型，
      * 解决“面试官每轮都重新认识候选人”的问题。
@@ -289,6 +394,16 @@ public class InterviewTools {
         return switch (t) {
             case "STRENGTH", "WEAKNESS" -> t;
             default -> "DOUBT";
+        };
+    }
+
+    /** 下一个环节的名字（只用于给模型展示进度，不改变流程） */
+    private String nextStageLabel(InterviewStage stage) {
+        return switch (stage) {
+            case SELF_INTRO -> InterviewStage.PROJECT.getLabel();
+            case PROJECT -> InterviewStage.TECH.getLabel();
+            case TECH -> InterviewStage.REVERSE.getLabel();
+            case REVERSE -> "无（已是最后环节）";
         };
     }
 

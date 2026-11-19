@@ -17,6 +17,8 @@ const TOOL_LABELS = {
   searchResume: '检索简历',
   searchKnowledge: '查知识库',
   searchQuestionBank: '查题库',
+  searchHistory: '查历史',
+  getInterviewProgress: '看进度',
   saveMemo: '记笔记'
 }
 

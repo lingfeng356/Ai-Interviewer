@@ -20,6 +20,11 @@ public class AgentContext {
         return reply.sessionId();
     }
 
+    /** 对话历史在 Redis 里的 key（searchHistory 工具要用） */
+    public String redisKey() {
+        return reply.redisKey();
+    }
+
     public Long resumeId() {
         return reply.resumeId();
     }

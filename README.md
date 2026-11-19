@@ -44,14 +44,20 @@
 
 ## Agent 做了什么
 
-每一轮回答，模型拿到 4 个工具：
+每一轮回答，模型拿到 6 个工具：
 
 | 工具 | 作用 |
 | --- | --- |
 | `searchResume(keyword)` | 在简历原文里按关键词检索片段，避免每轮都把几千字塞进 prompt |
 | `searchKnowledge(question)` | 查技术知识库，用来判断候选人答得对不对 |
 | `searchQuestionBank(topic, difficulty)` | 从题库取该考点的经典题 + 答题要点（63 道，覆盖 Java 基础/集合/并发/JVM/Spring/MySQL/Redis/消息队列/系统设计） |
+| `searchHistory(keyword)` | 在已聊过的对话里查“我问过什么、他怎么答的”，**避免换个说法重复问** |
+| `getInterviewProgress()` | 看当前环节、整场第几问、本环节还剩几题（只读） |
 | `saveMemo(type, note)` | 记录观察（优点 / 不足 / 疑点），注入后续轮次，并在评分时交给评估模型 |
+
+> `searchHistory` 解决的是 AI 面试官最常见的毛病：聊久了忘了自己问过什么，于是换个说法再问一遍。把它做成工具后，模型在“想问但不确定”时会自己查一下。
+>
+> 工具不是越多越好：每个工具都要在 prompt 里占描述、都会增加选错概率，所以只留“有独立数据源 + 不触发额外模型调用 + 失败可降级”的。
 
 题库是 `src/main/resources/question-bank/java-backend.json`，纯静态数据，改题目不用动库表。
 

@@ -44,6 +44,8 @@ class AgentCoreTest {
         assertTrue(prompt.contains("searchResume"));
         assertTrue(prompt.contains("searchKnowledge"));
         assertTrue(prompt.contains("saveMemo"));
+        assertTrue(prompt.contains("searchHistory"));
+        assertTrue(prompt.contains("getInterviewProgress"));
         assertTrue(prompt.contains("本轮最多还能调用 3 次工具"));
         assertTrue(prompt.contains("没说清索引失效"), "笔记应注入 prompt");
         assertTrue(prompt.contains("技术基础"));
@@ -160,6 +162,21 @@ class AgentCoreTest {
     void questionBankLoads() {
         assertTrue(bank().size() >= 50, "题库应至少有 50 道题");
         assertTrue(bank().categories().contains("Redis"));
+    }
+
+    @Test
+    @DisplayName("进度工具返回环节、场次和剩余题数")
+    void progressToolReportsStage() {
+        AgentTraceRecorder trace = new AgentTraceRecorder(5, 60_000);
+        ReplyContext ctx = contextWithResume("简历", trace);
+        InterviewTools tools = new InterviewTools(new AgentContext(ctx), new NoopRag(), bank(), null, trace);
+
+        String result = tools.getInterviewProgress();
+
+        assertTrue(result.contains("项目经历"));
+        assertTrue(result.contains("整场第 4 问"));
+        assertTrue(result.contains("约剩 3 题"));
+        assertEquals(1, trace.count());
     }
 
     /* ==================== 辅助 ==================== */
