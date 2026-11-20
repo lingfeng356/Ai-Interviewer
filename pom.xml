@@ -121,6 +121,13 @@
             <version>1.44.0</version>
         </dependency>
 
+        <!-- Sa-Token 的 Redis 持久化：把登录态从内存搬到 Redis，重启不掉线、多实例共享 -->
+        <dependency>
+            <groupId>cn.dev33</groupId>
+            <artifactId>sa-token-redis-jackson</artifactId>
+            <version>1.44.0</version>
+        </dependency>
+
         <!-- 密码加密 BCrypt -->
         <dependency>
             <groupId>org.springframework.security</groupId>
