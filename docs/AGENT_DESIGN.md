@@ -19,6 +19,8 @@
 > | `020` | **新增题库工具**：`question-bank/java-backend.json`（63 道，9 个分类）+ `QuestionBankService` + `searchQuestionBank` 工具 |
 > | `021` | 阶段推进改为申请制（`requestNextStage` + 审批），**已回滚**：审批规则只数题数，本质仍是数轮数，价值不足 |
 > | `022` | **新增两个工具**：`searchHistory`（查已问过的问题，治重复提问）+ `getInterviewProgress`（只读进度） |
+> | `023` | 登录态落 Redis（`sa-token-redis-jackson` + `SaTokenDaoForRedisTemplate`），重启不掉线、多实例共享 |
+> | `024` | 修复开始面试的三个缺陷：① 锁改 `tryLock` + 看门狗续期；② 幂等命中时重放开场白与环节；③ 前端幂等 id 复用 + 简历归属校验（含 `db/001_resume_user_id.sql`） |
 >
 > 已验证：后端编译通过、`AgentCoreTest` 8/8 通过、前端 `npm run build` 通过。
 > **尚未验证**：完整端到端运行（本机 Redis / RabbitMQ / pgvector 未启动，Agent 的真实工具调用尚未跑过）。

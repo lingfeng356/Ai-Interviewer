@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.conditions.update.LambdaUpdateChainWrapper;
 import com.lingfeng.interviewer.agent.AgentPromptBuilder;
+import com.lingfeng.interviewer.agent.ChatHistoryMatcher;
 import com.lingfeng.interviewer.agent.InterviewAgent;
 import com.lingfeng.interviewer.agent.ReplyContext;
 import com.lingfeng.interviewer.common.BusinessException;
@@ -90,21 +91,28 @@ public class InterviewServiceImpl implements InterviewService {
             return doStart(resumeId, provider, mode);
         }
 
-        //加锁
+        // 加锁：同一个 requestId 的并发请求只放一个进去。
+        // 用 tryLock(等待时间) 而不是 lock(固定租期)：
+        //   - 固定租期不自动续期，而 doStart 里有一次大模型调用（生成开场白），
+        //     一旦超过租期锁就提前释放，重复提交仍会建两场面试；
+        //   - tryLock(wait) 走 Redisson 看门狗（默认 30 秒租期、每 10 秒续期），
+        //     拿不到锁最多等 3 秒就失败，不会把请求挂死。
         RLock lock = redissonClient.getLock(RedisKeyConstants.interviewStart(requestId));
+        boolean locked = false;
 
         try {
-            lock.lock(10,TimeUnit.SECONDS);
+            locked = lock.tryLock(3, TimeUnit.SECONDS);
+            if (!locked) {
+                throw new BusinessException("正在创建面试，请稍候再试");
+            }
 
-            //先查这个requestId是否被创建过
+            // 先查这个 requestId 是否被创建过
             String redisKey = RedisKeyConstants.interviewRequest(requestId);
             String existSessionId = stringRedisTemplate.opsForValue().get(redisKey);
-            if(existSessionId != null){
-                //已经创建过，直接返回
-                StartInterviewVO vo = new StartInterviewVO();
-                vo.setSessionId(existSessionId);
-                vo.setMessage("面试已创建，请继续");
-                return vo;
+            if (existSessionId != null) {
+                // 已经创建过：把开场白和环节一起返回，
+                // 否则前端会把"已创建"的提示语当成 AI 的第一句话显示
+                return buildResumedVO(existSessionId);
             }
 
             //没创建过,走正常逻辑
@@ -116,11 +124,47 @@ public class InterviewServiceImpl implements InterviewService {
             );
 
             return vo;
-        }finally {
-            if(lock.isHeldByCurrentThread()){
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException("请求被中断，请重试");
+        } finally {
+            if (locked && lock.isHeldByCurrentThread()) {
                 lock.unlock();
             }
         }
+    }
+
+    /**
+     * 命中幂等分支时，重建一个和首次返回等价的 VO。
+     *
+     * 之前这里只给了 sessionId + 一句提示语，前端会把它当成开场白显示，
+     * 而且 stage 是 null，环节标签是空的。
+     * 既然对话历史在 Redis 里，直接读第一条 assistant 消息就够了。
+     */
+    private StartInterviewVO buildResumedVO(String sessionId) {
+        List<String> history = readHistory(sessionId);
+
+        String opening = ChatHistoryMatcher.opening(history);
+        int answeredRounds = ChatHistoryMatcher.answeredCount(history);
+        InterviewStage stage = InterviewStage.of(answeredRounds);
+
+        StartInterviewVO vo = new StartInterviewVO();
+        vo.setSessionId(sessionId);
+        vo.setMessage(opening != null ? opening : "面试已创建，请继续回答");
+        vo.setStage(stage.name());
+        vo.setStageName(stage.getLabel());
+        return vo;
+    }
+
+    /** 读整段对话历史；没有就返回空列表 */
+    private List<String> readHistory(String sessionId) {
+        String redisKey = RedisKeyConstants.interviewHistory(sessionId);
+        Long size = stringRedisTemplate.opsForList().size(redisKey);
+        if (size == null || size == 0) {
+            return List.of();
+        }
+        List<String> history = stringRedisTemplate.opsForList().range(redisKey, 0, size - 1);
+        return history == null ? List.of() : history;
     }
 
     /**
@@ -322,14 +366,7 @@ public class InterviewServiceImpl implements InterviewService {
 
         // 8. 数一下候选人已经回答了几轮，用来判断当前处于哪个面试环节
         //    注意：开场白是 assistant 消息，不算在内，所以只数 user 开头的
-        int answeredRounds = 0;
-        if (rawHistory != null) {
-            for (String item : rawHistory) {
-                if (item.startsWith("user:")) {
-                    answeredRounds++;
-                }
-            }
-        }
+        int answeredRounds = ChatHistoryMatcher.answeredCount(rawHistory);
         InterviewStage stage = InterviewStage.of(answeredRounds);
 
         return new ReplyContext(sessionId, redisKey, provider, messages, stage, answeredRounds,
@@ -558,6 +595,21 @@ public class InterviewServiceImpl implements InterviewService {
         String sessionId = UUID.randomUUID().toString();
 
         Long userId = StpUtil.getLoginIdAsLong();
+
+        // 0. 校验简历归属：否则拿到别人的 resumeId 就能拿别人的简历开面试（IDOR）
+        Resume resume = resumeMapper.selectById(resumeId);
+        if (resume == null) {
+            throw new BusinessException("简历不存在，请重新上传");
+        }
+        Long ownerId = resume.getUserId();
+        if (ownerId != null && ownerId != 0 && !ownerId.equals(userId)) {
+            throw BusinessException.forbidden("无权使用该简历");
+        }
+        if (ownerId == null || ownerId == 0) {
+            // 加 user_id 之前上传的历史数据：暂时放行并留日志，
+            // 跑过 db/001_resume_user_id.sql 回填后再收紧成"必须匹配"
+            log.warn("简历缺少归属信息，按历史数据放行, resumeId={}", resumeId);
+        }
 
         // 默认 deepseek
         String actualProvider = (provider != null && !provider.isEmpty()) ? provider : "deepseek";

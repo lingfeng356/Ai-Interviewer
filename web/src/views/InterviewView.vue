@@ -6,7 +6,7 @@ import { uploadResume } from '@/api/resume'
 import { getProviders } from '@/api/interview'
 import { useInterviewStore } from '@/stores/interview'
 import { getResumeCache, addResumeCache } from '@/utils/storage'
-import { formatDateTime, shortId } from '@/utils/format'
+import { formatDateTime, shortId, uuid } from '@/utils/format'
 import { stopAudio } from '@/utils/audio'
 import AppHeader from '@/components/AppHeader.vue'
 import ChatBubble from '@/components/ChatBubble.vue'
@@ -144,17 +144,41 @@ const statusInfo = computed(() => {
   return { type: 'info', text: '未开始' }
 })
 
+/* 幂等 id 挂在「一次开始意图」上：失败重试复用，成功或换简历才重置。
+   存 sessionStorage 是为了刷新页面后重试也能命中同一个 id。 */
+const PENDING_START_KEY = 'ai_interviewer_pending_start'
+const pendingStartId = ref('')
+
+function ensurePendingStartId() {
+  if (!pendingStartId.value) {
+    pendingStartId.value = sessionStorage.getItem(PENDING_START_KEY) || uuid()
+    sessionStorage.setItem(PENDING_START_KEY, pendingStartId.value)
+  }
+  return pendingStartId.value
+}
+
+function clearPendingStartId() {
+  pendingStartId.value = ''
+  sessionStorage.removeItem(PENDING_START_KEY)
+}
+
+// 换了简历，旧的幂等 id 必须作废，否则会命中上一份简历创建的那场面试
+watch(currentResumeId, () => clearPendingStartId())
+
 async function handleStart() {
   if (!currentResumeId.value) {
     ElMessage.warning('请先上传一份 PDF 简历')
     return
   }
 
+  const requestId = ensurePendingStartId()
   starting.value = true
   try {
     store.resumeId = currentResumeId.value
     store.resumeName = currentResume.value ? currentResume.value.fileName : ''
-    const data = await store.start()
+    const data = await store.start(requestId)
+    // 成功才作废；失败时保留，下次重试复用同一个 requestId
+    clearPendingStartId()
     ElMessage.success('面试已开始，AI 面试官正在提问')
     scrollToBottom()
     return data

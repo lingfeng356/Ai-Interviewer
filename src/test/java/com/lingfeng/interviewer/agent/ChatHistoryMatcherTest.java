@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -23,6 +24,17 @@ class ChatHistoryMatcherTest {
         raw.add("user:用来做商品缓存，QPS 从 800 提到 5000");
         raw.add("assistant:那缓存和数据库不一致怎么办");
         return raw;
+    }
+
+    @Test
+    @DisplayName("能取到开场白，并数出候选人回答了几轮")
+    void openingAndAnsweredCount() {
+        assertEquals("请先做个自我介绍", ChatHistoryMatcher.opening(sample()));
+        assertEquals(2, ChatHistoryMatcher.answeredCount(sample()));
+
+        assertNull(ChatHistoryMatcher.opening(null));
+        assertEquals(0, ChatHistoryMatcher.answeredCount(null));
+        assertEquals(0, ChatHistoryMatcher.answeredCount(List.of()));
     }
 
     @Test

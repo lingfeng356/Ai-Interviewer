@@ -19,5 +19,13 @@ public class Resume {
     private String profile;
 
     private String status;
+
+    /**
+     * 简历所属用户。
+     * 早期表里没有这个字段，所以历史数据可能为 null；
+     * 上传时写入，开始面试时用它做越权校验。
+     */
+    private Long userId;
+
     private LocalDateTime createdTime;
 }

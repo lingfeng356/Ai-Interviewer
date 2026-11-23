@@ -26,6 +26,36 @@ public final class ChatHistoryMatcher {
     public record QaPair(int questionNo, String question, String answer) {
     }
 
+    /**
+     * 取开场白：历史里第一条 assistant 消息。
+     * 幂等命中时要用它把"开场白"重放给前端，而不是返回一句提示语。
+     */
+    public static String opening(List<String> raw) {
+        if (raw == null) {
+            return null;
+        }
+        for (String item : raw) {
+            if (item != null && item.startsWith("assistant:")) {
+                return item.substring("assistant:".length()).trim();
+            }
+        }
+        return null;
+    }
+
+    /** 候选人回答了几轮：只数 user 条数，开场白（assistant）不算 */
+    public static int answeredCount(List<String> raw) {
+        if (raw == null) {
+            return 0;
+        }
+        int count = 0;
+        for (String item : raw) {
+            if (item != null && item.startsWith("user:")) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     /** 把原始历史还原成问答对（末尾还没被回答的那一问不会出现在结果里） */
     public static List<QaPair> pairs(List<String> raw) {
         List<QaPair> result = new ArrayList<>();

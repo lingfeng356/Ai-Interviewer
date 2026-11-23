@@ -9,7 +9,7 @@ import {
 } from '@/api/interview'
 import { voiceInterview } from '@/api/voice'
 import { playBase64Audio, stopAudio } from '@/utils/audio'
-import { nowTime, uuid } from '@/utils/format'
+import { nowTime } from '@/utils/format'
 
 let messageSeq = 0
 function nextId() {
@@ -71,13 +71,16 @@ export const useInterviewStore = defineStore('interview', () => {
   }
 
   /* ---------------- 开始面试 ---------------- */
-  async function start() {
+  /**
+   * @param requestId 幂等 id。由调用方（页面）生成并在重试时复用同一个值，
+   *                  放在这里每次 new 一个的话，后端的幂等逻辑就永远不会命中。
+   */
+  async function start(requestId) {
     if (!resumeId.value) throw new Error('请先选择简历')
     const data = await startInterview({
       resumeId: resumeId.value,
       provider: provider.value,
-      // 幂等 id：双击 / 重试都不会创建两场面试
-      requestId: uuid(),
+      requestId,
       // agent | classic：决定后端用哪种方式提问
       mode: agentMode.value
     })

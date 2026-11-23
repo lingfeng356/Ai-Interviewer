@@ -1,5 +1,6 @@
 package com.lingfeng.interviewer.service.impl;
 
+import cn.dev33.satoken.stp.StpUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingfeng.interviewer.common.BusinessException;
 import com.lingfeng.interviewer.common.StructuredOutputInvoker;
@@ -62,7 +63,6 @@ public class ResumeServiceImpl implements ResumeService {
     private ObjectMapper objectMapper;
 
 
-    //TODO:添加OCR图片识别pdf
     //加载简历
     @Override
     public ResumeUploadVO upload(MultipartFile file) {
@@ -115,6 +115,8 @@ public class ResumeServiceImpl implements ResumeService {
         resume.setStatus("PARSED");
         resume.setContent(content);
         resume.setProfile(toJson(profile));
+        // 记录归属：这样开始面试时才能校验"这份简历是不是当前用户的"
+        resume.setUserId(StpUtil.getLoginIdAsLong());
         resumeMapper.insert(resume);
 
         //8.组装VO返回
