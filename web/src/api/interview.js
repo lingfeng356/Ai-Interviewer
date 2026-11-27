@@ -1,4 +1,5 @@
 import request from './request'
+import { getToken } from '@/utils/storage'
 
 /**
  * 开始面试  POST /interview/start?resumeId=&provider=&requestId=&mode=
@@ -75,11 +76,14 @@ export function getInterviewList() {
 }
 
 /**
- * SSE 地址（/interview/sse 后端已放行，无需 token）
- * 报告生成过程中后端会按阶段推 PROGRESS 事件，全部完成时推 DONE
+ * SSE 地址。
+ * EventSource 不能自定义请求头，所以 token 只能放在 query 里，
+ * 后端 /interview/sse 会显式校验它 + 这场面试的归属。
+ * 报告生成过程中后端按阶段推 PROGRESS 事件，全部完成时推 DONE
  */
 export function buildSseUrl(sessionId) {
-  return `/api/interview/sse?sessionId=${encodeURIComponent(sessionId)}`
+  const token = encodeURIComponent(getToken() || '')
+  return `/api/interview/sse?sessionId=${encodeURIComponent(sessionId)}&token=${token}`
 }
 
 /**

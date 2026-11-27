@@ -21,6 +21,7 @@
 > | `022` | **新增两个工具**：`searchHistory`（查已问过的问题，治重复提问）+ `getInterviewProgress`（只读进度） |
 > | `023` | 登录态落 Redis（`sa-token-redis-jackson` + `SaTokenDaoForRedisTemplate`），重启不掉线、多实例共享 |
 > | `024` | 修复开始面试的三个缺陷：① 锁改 `tryLock` + 看门狗续期；② 幂等命中时重放开场白与环节；③ 前端幂等 id 复用 + 简历归属校验（含 `db/001_resume_user_id.sql`） |
+> | `025` | 修复评分链路的五个缺陷：报告幂等（存在即跳过）、手动 ack + 死信队列、SSE 多连接、生产端同步确认、SSE 鉴权（token + 归属校验） |
 >
 > 已验证：后端编译通过、`AgentCoreTest` 8/8 通过、前端 `npm run build` 通过。
 > **尚未验证**：完整端到端运行（本机 Redis / RabbitMQ / pgvector 未启动，Agent 的真实工具调用尚未跑过）。

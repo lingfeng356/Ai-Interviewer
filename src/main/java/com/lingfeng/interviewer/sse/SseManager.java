@@ -7,18 +7,21 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 
 /**
  * SSE 连接管理器
  *
- * 改造点（对比原来的“只推一条字符串”）：
- * 1. 支持命名事件（前端用 addEventListener 精确接收，不再靠字符串包含判断）
- * 2. 超时从 60s 提到 5 分钟（报告生成可能要几十秒，原来的连接会提前断掉）
- * 3. 进度同时写 Redis，刷新页面 / 多实例部署也能拿到当前进度
+ * 设计点：
+ * 1. 命名事件（前端用 addEventListener 精确接收，不靠字符串包含判断）
+ * 2. 超时 5 分钟（报告生成几十秒，60 秒会提前断）
+ * 3. 进度同时写 Redis，刷新页面 / 多实例也能拿到当前进度
  * 4. 推送失败只清理连接、不抛异常 —— 推送不该影响评分主流程
+ * 5. 一个 session 允许多个连接（同一场面试开了两个标签页，两个都要能收到进度）
  */
 @Component
 public class SseManager {
@@ -29,8 +32,11 @@ public class SseManager {
     /** 进度缓存 10 分钟，用于刷新页面后恢复 */
     private static final Duration PROGRESS_TTL = Duration.ofMinutes(10);
 
-    /** key(这里就是 sessionId) -> 连接 */
-    private final Map<String, SseEmitter> emitterMap = new ConcurrentHashMap<>();
+    /**
+     * key(这里就是 sessionId) -> 多个连接。
+     * 用 CopyOnWriteArrayList：读多写少（推送频繁、建连/断开很少），加锁代价最低。
+     */
+    private final Map<String, List<SseEmitter>> emitterMap = new ConcurrentHashMap<>();
 
     private final StringRedisTemplate stringRedisTemplate;
 
@@ -44,10 +50,13 @@ public class SseManager {
      */
     public SseEmitter create(String key, String sessionId) {
         SseEmitter emitter = new SseEmitter(TIMEOUT_MS);
-        emitter.onCompletion(() -> emitterMap.remove(key));
-        emitter.onTimeout(() -> emitterMap.remove(key));
-        emitter.onError(e -> emitterMap.remove(key));
-        emitterMap.put(key, emitter);
+        List<SseEmitter> list = emitterMap.computeIfAbsent(key, k -> new CopyOnWriteArrayList<>());
+        list.add(emitter);
+
+        // 三个回调都要清理，否则断开的 emitter 会一直留在 list 里
+        emitter.onCompletion(() -> remove(key, emitter));
+        emitter.onTimeout(() -> remove(key, emitter));
+        emitter.onError(e -> remove(key, emitter));
 
         if (sessionId != null) {
             String last = getProgress(sessionId);
@@ -59,23 +68,25 @@ public class SseManager {
     }
 
     /**
-     * 推送一个命名事件。
+     * 推送给这个 key 下的所有连接。
      * 连接不存在（浏览器没连 / 已断开）时静默返回，不影响调用方业务。
      */
     public void send(String key, String event, String data) {
-        SseEmitter emitter = emitterMap.get(key);
-        if (emitter == null) {
+        List<SseEmitter> list = emitterMap.get(key);
+        if (list == null || list.isEmpty()) {
             return;
         }
-        try {
-            emitter.send(
-                    SseEmitter.event()                    // 1. 创建一个事件
-                            .name(event)                      // 2. 设置事件名
-                            .data(data, MediaType.TEXT_PLAIN) // 3. 设置事件数据
-            );
-        } catch (Exception e) {
-            // 连接已断开：清理掉即可，不要把异常抛回业务线程
-            emitterMap.remove(key);
+        for (SseEmitter emitter : list) {
+            try {
+                emitter.send(
+                        SseEmitter.event()
+                                .name(event)
+                                .data(data, MediaType.TEXT_PLAIN)
+                );
+            } catch (Exception e) {
+                // 这个连接已断开：只移除它，其它连接继续
+                remove(key, emitter);
+            }
         }
     }
 
@@ -95,15 +106,30 @@ public class SseManager {
                 .get(RedisKeyConstants.interviewProgress(sessionId));
     }
 
-    /** 结束连接 */
+    /** 结束这个 key 下的所有连接 */
     public void complete(String key) {
-        SseEmitter emitter = emitterMap.remove(key);
-        if (emitter != null) {
+        List<SseEmitter> list = emitterMap.remove(key);
+        if (list == null) {
+            return;
+        }
+        for (SseEmitter emitter : list) {
             try {
                 emitter.complete();
             } catch (Exception ignored) {
                 // 已经断开的连接 complete 会抛异常，忽略即可
             }
+        }
+    }
+
+    /** 移除单个连接；列表空了就把 key 一起删掉，避免 Map 无限增长 */
+    private void remove(String key, SseEmitter emitter) {
+        List<SseEmitter> list = emitterMap.get(key);
+        if (list == null) {
+            return;
+        }
+        list.remove(emitter);
+        if (list.isEmpty()) {
+            emitterMap.remove(key, list);
         }
     }
 }

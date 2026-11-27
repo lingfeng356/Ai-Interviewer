@@ -1,5 +1,6 @@
 package com.lingfeng.interviewer.rabbitMQ.consumer;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingfeng.interviewer.common.RedisKeyConstants;
 import com.lingfeng.interviewer.common.StructuredOutputInvoker;
@@ -9,13 +10,17 @@ import com.lingfeng.interviewer.dto.InterviewReportVO;
 import com.lingfeng.interviewer.entity.InterviewReport;
 import com.lingfeng.interviewer.mapper.InterviewReportMapper;
 import com.lingfeng.interviewer.sse.SseManager;
+import com.rabbitmq.client.Channel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -45,9 +50,24 @@ public class InterviewEvaluateConsumer extends AbstractStreamConsumer<String>{
     @Autowired
     private StructuredOutputInvoker structuredOutputInvoker;
 
+    /**
+     * 手动 ack：
+     * - 处理成功（或报告已存在）→ basicAck；
+     * - 处理失败 → basicNack(requeue=false)，消息进死信队列，不做无意义的无限重投。
+     * 如果进程在处理中挂掉、没来得及 ack，Broker 会重新投递 —— 这就是 at-least-once。
+     */
     @RabbitListener(queues = RabbitMQConfig.EVALUATE_QUEUE)
-    public void onMessage(String sessionId) {
-        handle(sessionId);
+    public void onMessage(String sessionId,
+                          Channel channel,
+                          @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) throws IOException {
+        try {
+            handle(sessionId);
+            channel.basicAck(deliveryTag, false);
+        } catch (Exception e) {
+            // handle 里已经推送过 FAILED 事件；这里只负责把消息送去死信
+            log.error("评估消息处理失败，转入死信队列, sessionId={}", sessionId, e);
+            channel.basicNack(deliveryTag, false, false);
+        }
     }
 
     /**
@@ -58,6 +78,18 @@ public class InterviewEvaluateConsumer extends AbstractStreamConsumer<String>{
     @Override
     protected void handle(String sessionId){
         try {
+            // 0.幂等：消息可能被重复投递（ack 前进程重启、人工重投），
+            //   报告已存在就直接确认，不再花钱调一次模型
+            InterviewReport existing = interviewReportMapper.selectOne(
+                    new LambdaQueryWrapper<InterviewReport>()
+                            .eq(InterviewReport::getSessionId, sessionId)
+                            .last("limit 1"));
+            if (existing != null) {
+                progress(sessionId, "DONE", 100, "报告已存在，跳过重复评估");
+                sseManager.complete(sessionId);
+                return;
+            }
+
             progress(sessionId, "QUEUED", 10, "评估任务已受理");
 
             // 1.读redis消息历史
@@ -135,8 +167,9 @@ public class InterviewEvaluateConsumer extends AbstractStreamConsumer<String>{
             log.error("面试评估失败, sessionId={}", sessionId, e);
             progress(sessionId, "FAILED", -1, "报告生成失败：" + e.getMessage());
             sseManager.complete(sessionId);
-            // 注意：这里不重新抛异常。当前没配死信队列，重抛会让消息无限重回队列；
-            // 前端已经通过 FAILED 事件拿到提示，用户可以重新发起。
+            // 抛回去让 onMessage 做 basicNack(requeue=false)：
+            // 消息进死信队列，而不是无限重回原队列把日志刷爆
+            throw new IllegalStateException("面试评估失败: " + sessionId, e);
         }
     }
 

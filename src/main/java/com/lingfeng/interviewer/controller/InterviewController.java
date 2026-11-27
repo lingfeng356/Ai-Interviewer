@@ -1,5 +1,6 @@
 package com.lingfeng.interviewer.controller;
 
+import com.lingfeng.interviewer.common.BusinessException;
 import com.lingfeng.interviewer.common.RateLimit;
 import com.lingfeng.interviewer.common.Result;
 import com.lingfeng.interviewer.config.LlmProviderRegistry;
@@ -7,6 +8,7 @@ import com.lingfeng.interviewer.dto.*;
 import com.lingfeng.interviewer.mapper.InterviewSessionMapper;
 import com.lingfeng.interviewer.service.InterviewService;
 import com.lingfeng.interviewer.sse.SseManager;
+import cn.dev33.satoken.stp.StpUtil;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -99,8 +101,21 @@ public class InterviewController {
 
     //Sse：报告生成进度
     // 第二个参数让 SseManager 在连接建立时补发一次 Redis 里缓存的进度（刷新页面不丢进度）
+    // 注意：EventSource 不能自定义请求头，所以 token 只能走 query，并在方法里显式校验
     @GetMapping(value = "/sse",produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter sse(@RequestParam String sessionId){
+    public SseEmitter sse(@RequestParam String sessionId,
+                          @RequestParam(required = false) String token){
+        Long userId = requireUserId(token);
+        interviewService.assertOwner(sessionId, userId);
         return sseManager.create(sessionId, sessionId);
+    }
+
+    /** 从 query 里的 token 还原登录用户；无效直接 403 */
+    private Long requireUserId(String token) {
+        Object loginId = StpUtil.getLoginIdByToken(token);
+        if (loginId == null) {
+            throw BusinessException.forbidden("登录状态已失效，请重新登录");
+        }
+        return Long.valueOf(loginId.toString());
     }
 }

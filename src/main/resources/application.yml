@@ -32,6 +32,16 @@ spring:
     port: 5672
     username: username
     password: password
+    # 生产端确认：消息没被 Broker 落盘时，waitForConfirmsOrDie 会抛异常
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        # 手动 ack：处理成功才确认；失败 nack 进死信，不做无意义的无限重投
+        acknowledge-mode: manual
+        default-requeue-rejected: false
+        retry:
+          enabled: false
 
 mybatis:
   mapper-locations: classpath:mapper/*.xml

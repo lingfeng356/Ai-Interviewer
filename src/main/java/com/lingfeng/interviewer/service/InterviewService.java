@@ -36,5 +36,11 @@ public interface InterviewService {
 
     InterviewReportVO report(String sessionId);
 
+    /**
+     * 校验该用户是否有权访问这场面试。
+     * SSE 这类不能带请求头的场景，登录态由调用方从 query 里解析后传进来。
+     */
+    void assertOwner(String sessionId, Long userId);
+
     List<InterviewSessionVO> list();
 }

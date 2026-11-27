@@ -443,7 +443,25 @@ public class InterviewServiceImpl implements InterviewService {
             throw new BusinessException("会话不存在");
         }
         if ("FINISHED".equals(session.getStatus())) {
-            throw new BusinessException("该面试已结束");
+            // 已结束但报告不存在：说明上次评估失败、消息进了死信。
+            // 这种情况允许重新投递一次，否则用户永远拿不到报告。
+            InterviewReport exist = interviewReportMapper.selectOne(
+                    new LambdaQueryWrapper<InterviewReport>()
+                            .eq(InterviewReport::getSessionId, sessionId)
+                            .last("limit 1"));
+            if (exist != null) {
+                throw new BusinessException("该面试已结束");
+            }
+            Long currentUserId = StpUtil.getLoginIdAsLong();
+            if (!session.getUserId().equals(currentUserId)) {
+                throw BusinessException.forbidden("无权访问该面试");
+            }
+            sendEvaluateTask(sessionId);
+
+            InterviewReportVO retryVo = new InterviewReportVO();
+            retryVo.setSessionId(sessionId);
+            retryVo.setSummary("报告生成中，请稍后查询");
+            return retryVo;
         }
 
         Long currentUserId = StpUtil.getLoginIdAsLong();
@@ -544,8 +562,20 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     @Override
+    public void assertOwner(String sessionId, Long userId) {
+        InterviewSession session = interviewSessionMapper.selectOne(
+                new LambdaQueryWrapper<InterviewSession>()
+                        .eq(InterviewSession::getSessionId, sessionId));
+        if (session == null) {
+            throw new BusinessException("会话不存在");
+        }
+        if (!session.getUserId().equals(userId)) {
+            throw BusinessException.forbidden("无权访问该面试");
+        }
+    }
+
+    @Override
     public List<InterviewSessionVO> list() {
-        //1.获取当前用户id
         Long userId = StpUtil.getLoginIdAsLong();
 
         //2.查看当前用户所有面试
