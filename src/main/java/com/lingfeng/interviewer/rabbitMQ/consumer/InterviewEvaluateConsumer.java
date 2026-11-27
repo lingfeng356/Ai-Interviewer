@@ -16,6 +16,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
@@ -157,7 +158,13 @@ public class InterviewEvaluateConsumer extends AbstractStreamConsumer<String>{
             entity.setWeaknesses(report.getWeaknesses() != null ? String.join(",", report.getWeaknesses()) : "");
             entity.setSuggestion(report.getSuggestion());
             entity.setCreatedTime(LocalDateTime.now());
-            interviewReportMapper.insert(entity);
+            try {
+                interviewReportMapper.insert(entity);
+            } catch (DuplicateKeyException e) {
+                // 并发消费（多个消费者实例）时，另一个已经先写入了。
+                // 唯一索引兜底，这里视为成功，不能让已经生成好的报告被标成失败。
+                log.warn("报告已存在（并发消费），忽略本次插入, sessionId={}", sessionId);
+            }
 
             // 4.完成
             progress(sessionId, "DONE", 100, "报告生成完成");
